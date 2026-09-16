@@ -21,6 +21,10 @@ export async function createApiKey(input: { name: string; scopes: ApiScope[]; ac
 function scopeAllows(granted: ApiScope[], required: ApiScope) {
   if (granted.includes(required)) return true;
   if (granted.includes('license.manage') && ['license.issue', 'license.validate'].includes(required)) return true;
+  // Compatibility for API keys created by the old Billing Store form, which
+  // incorrectly defaulted to license.validate. Those keys must be able to
+  // provision a paid order, but do not receive license.manage privileges.
+  if (granted.includes('license.validate') && required === 'license.issue') return true;
   if (granted.includes('releases.write') && required === 'releases.read') return true;
   if (granted.includes('deployment.write') && required === 'deployment.read') return true;
   return false;
