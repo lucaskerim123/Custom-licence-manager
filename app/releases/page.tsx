@@ -1,7 +1,136 @@
-import { requireUser } from '../../lib/session';import { db } from '../../lib/db';import { createRelease, listReleases, setReleaseReview, publishRelease } from '../../lib/core/releases';export const dynamic='force-dynamic';const roles=['owner','admin','operator'];
-async function create(formData:FormData){'use server';const user=await requireUser();if(!roles.includes(user.role))return;const productId=String(formData.get('product_id')||'');const version=String(formData.get('version')||'').trim();const artifactUrl=String(formData.get('artifact_url')||'').trim();if(!productId||!version||!artifactUrl)return;const type=String(formData.get('release_type')||'update')==='base'?'base':'update';const components=String(formData.get('components')||'base').split(',').map(x=>x.trim()).filter(Boolean);await createRelease({productId,version,artifactUrl,channel:'stable',releaseType:type,sourceRepo:String(formData.get('source_repo')||'')||null,sourceRef:String(formData.get('source_ref')||'')||null,checksum:String(formData.get('checksum')||'')||null,notes:String(formData.get('notes')||'')||null,manifest:{components},publish:false,actorUserId:user.id,actor:user.email,reviewStatus:'pending'});}
-async function review(formData:FormData){'use server';const user=await requireUser();if(!roles.includes(user.role))return;const id=String(formData.get('id')||'');const decision=String(formData.get('decision')||'');if(id&&(decision==='approved'||decision==='rejected'))await setReleaseReview(id,decision,user.id,user.email)}
-async function publish(formData:FormData){'use server';const user=await requireUser();if(!['owner','admin'].includes(user.role))return;const id=String(formData.get('id')||'');if(id)await publishRelease(id,user.id,user.email)}
-export default async function Releases(){const user=await requireUser();const [products,releases]=await Promise.all([db().query("select id,name from products where status='active' order by name"),listReleases()]);const bases=releases.filter((x:any)=>x.release_type==='base'),updates=releases.filter((x:any)=>x.release_type==='update');return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a href="/products">Products</a><a className="active" href="/releases">Releases</a><a href="/users">Users</a><a href="/settings">System Settings</a></nav></aside><main className="main"><h1 className="title">Releases</h1><p className="muted">Base control is simple. Update releases carry the detailed component changelog and customer-system update plan.</p>{roles.includes(user.role)&&<div className="section card"><h2>New release</h2><form className="form" action={create}><label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.rows.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Version<input className="input" name="version" placeholder="1.2.0" required/></label><label>Type<select className="input" name="release_type"><option value="base">Base</option><option value="update">Update</option></select></label><label>Components<input className="input" name="components" defaultValue="base" placeholder="base,mcp,apex,jds"/><small>Use all for a full update, or list individual components.</small></label><label>Artifact URL<input className="input" name="artifact_url" type="url" required/></label><label>Source repo<input className="input" name="source_repo"/></label><label>Source ref<input className="input" name="source_ref"/></label><label>Checksum<input className="input" name="checksum"/></label><label>Changelog<textarea className="input" name="notes" rows={5}/></label><button className="button">Create pending release</button></form></div>}
- <section className="section card"><h2>Base releases</h2>{bases.length?bases.map((x:any)=><div className="listrow" key={x.id}><div><strong>{x.product} {x.version}</strong><span>{x.status} · review {x.review_status}</span><small>{x.notes||'No changelog.'}</small></div>{x.review_status==='pending'&&<div className="actions"><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="approved"/><button className="button">Approve</button></form><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="rejected"/><button className="button">Reject</button></form></div>}{x.review_status==='approved'&&x.status!=='published'&&['owner','admin'].includes(user.role)&&<form action={publish}><input type="hidden" name="id" value={x.id}/><button className="button">Publish</button></form>}</div>):<p className="muted">No Base releases.</p>}</section>
- <section className="section card"><h2>Update releases</h2>{updates.length?updates.map((x:any)=><div className="listrow" key={x.id}><div><strong>{x.product} {x.version}</strong><span>{x.status} · review {x.review_status} · components {(x.manifest?.components||[]).join(', ')||'base'}</span><small>{x.notes||'No changelog.'}</small></div>{x.review_status==='pending'&&<div className="actions"><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="approved"/><button className="button">Approve</button></form><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="rejected"/><button className="button">Reject</button></form></div>}{x.review_status==='approved'&&x.status!=='published'&&['owner','admin'].includes(user.role)&&<form action={publish}><input type="hidden" name="id" value={x.id}/><button className="button">Publish</button></form>}</div>):<p className="muted">No Update releases.</p>}</section></main></div>}
+import { requireUser } from '../../lib/session';
+import { db } from '../../lib/db';
+import { createRelease, listReleases, setReleaseReview, publishRelease, validateRelease } from '../../lib/core/releases';
+
+export const dynamic = 'force-dynamic';
+const roles = ['owner', 'admin', 'operator'];
+
+async function create(formData: FormData) {
+  'use server';
+  const user = await requireUser();
+  if (!roles.includes(user.role)) return;
+  const productId = String(formData.get('product_id') || '');
+  const version = String(formData.get('version') || '').trim();
+  const artifactUrl = String(formData.get('artifact_url') || '').trim();
+  if (!productId || !version || !artifactUrl) return;
+  const type = String(formData.get('release_type') || 'update') === 'base' ? 'base' : 'update';
+  const components = String(formData.get('components') || (type === 'base' ? 'base' : 'base')).split(',').map(x => x.trim()).filter(Boolean);
+  await createRelease({
+    productId, version, artifactUrl, channel: String(formData.get('channel') || 'stable'), releaseType: type,
+    sourceRepo: String(formData.get('source_repo') || '') || null,
+    sourceRef: String(formData.get('source_ref') || '') || null,
+    sourceSha: String(formData.get('source_sha') || '') || null,
+    checksum: String(formData.get('checksum') || '') || null,
+    artifactName: String(formData.get('artifact_name') || '') || null,
+    artifactRepo: String(formData.get('artifact_repo') || '') || null,
+    artifactRunId: Number(formData.get('artifact_run_id') || 0) || null,
+    notes: String(formData.get('changelog') || '') || null,
+    publish: false,
+    actorUserId: user.id,
+    actor: user.email,
+    reviewStatus: 'pending',
+    manifest: {
+      components,
+      title: String(formData.get('title') || '').trim(),
+      description: String(formData.get('description') || '').trim(),
+      customer_notes: String(formData.get('customer_notes') || '').trim(),
+      internal_notes: String(formData.get('internal_notes') || '').trim(),
+      severity: String(formData.get('severity') || 'normal'),
+      required: formData.get('required') === 'on',
+      rollout: String(formData.get('rollout') || 'public'),
+      minimum_version: String(formData.get('minimum_version') || '').trim() || null,
+      rollback_version: String(formData.get('rollback_version') || '').trim() || null,
+    },
+  });
+}
+
+async function validate(formData: FormData) {
+  'use server';
+  const user = await requireUser();
+  if (!roles.includes(user.role)) return;
+  const id = String(formData.get('id') || '');
+  if (id) await validateRelease(id, user.id, user.email);
+}
+
+async function review(formData: FormData) {
+  'use server';
+  const user = await requireUser();
+  if (!roles.includes(user.role)) return;
+  const id = String(formData.get('id') || '');
+  const decision = String(formData.get('decision') || '');
+  if (id && (decision === 'approved' || decision === 'rejected')) await setReleaseReview(id, decision, user.id, user.email);
+}
+
+async function publish(formData: FormData) {
+  'use server';
+  const user = await requireUser();
+  if (!['owner', 'admin'].includes(user.role)) return;
+  const id = String(formData.get('id') || '');
+  if (id) await publishRelease(id, user.id, user.email);
+}
+
+function validationSummary(release: any) {
+  const validation = release.manifest?.validation;
+  if (!validation) return { status: 'not run', checks: [] };
+  return { status: validation.status || 'failed', checks: Array.isArray(validation.checks) ? validation.checks : [] };
+}
+
+export default async function Releases() {
+  const user = await requireUser();
+  const [products, releases] = await Promise.all([
+    db().query("select id,slug,name from products where status='active' order by name"),
+    listReleases(),
+  ]);
+  const bases = releases.filter((x: any) => x.release_type === 'base');
+  const updates = releases.filter((x: any) => x.release_type === 'update');
+  const releaseCard = (x: any) => {
+    const validation = validationSummary(x);
+    const canReview = x.status !== 'published' && validation.status === 'passed';
+    return <div className="listrow" key={x.id}>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <strong>{x.product_name || x.product} {x.version}</strong>
+        <span>{x.release_type} · {x.status} · review {x.review_status} · validation {validation.status}</span>
+        <small style={{ whiteSpace: 'pre-wrap' }}>{x.notes || 'No changelog.'}</small>
+        {x.manifest?.components?.length ? <small>Components: {x.manifest.components.map((c: string) => c === 'core' || c === 'orbitfs_base' ? 'base' : c).join(', ')}</small> : null}
+        {validation.checks.length ? <details style={{ marginTop: 8 }}><summary>Validation checks</summary><div style={{ display: 'grid', gap: 4, marginTop: 8 }}>{validation.checks.map((c: any) => <small key={c.key} style={{ color: c.ok ? 'inherit' : '#b42318' }}>{c.ok ? 'PASS' : 'FAIL'} · {c.message}</small>)}</div></details> : null}
+      </div>
+      <div className="actions">
+        {x.status !== 'published' && <form action={validate}><input type="hidden" name="id" value={x.id}/><button className="button">Validate / test</button></form>}
+        {x.review_status === 'pending' && <><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="approved"/><button className="button" disabled={!canReview}>Confirm &amp; approve</button></form><form action={review}><input type="hidden" name="id" value={x.id}/><input type="hidden" name="decision" value="rejected"/><button className="button">Reject</button></form></>}
+        {x.review_status === 'approved' && x.status !== 'published' && ['owner', 'admin'].includes(user.role) && <form action={publish}><input type="hidden" name="id" value={x.id}/><button className="button">Final publish</button></form>}
+      </div>
+    </div>;
+  };
+
+  return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a href="/products">Products</a><a className="active" href="/releases">Releases</a><a href="/users">Users</a><a href="/settings">System Settings</a></nav></aside><main className="main">
+    <h1 className="title">OrbitFS Releases</h1>
+    <p className="muted">License Master is the release authority. A Base or Update release is validated here, its changelog is confirmed, checks are completed, then it can be approved and finally published. Billing Store receives only published releases.</p>
+    {roles.includes(user.role) && <div className="section card"><h2>New release</h2><form className="form" action={create}>
+      <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.rows.map((p: any) => <option key={p.id} value={p.id} selected={p.slug === 'orbitfs_base'}>{p.name} ({p.slug})</option>)}</select></label>
+      <label>Version<input className="input" name="version" placeholder="1.2.0" required/></label>
+      <label>Type<select className="input" name="release_type"><option value="base">Base</option><option value="update">Update</option></select></label>
+      <label>Components<input className="input" name="components" defaultValue="base" placeholder="base,mcp,apex,studio"/><small>Base releases stay simple. Updates can target base, MCP, APEX and Studio together or individually.</small></label>
+      <label>Artifact URL<input className="input" name="artifact_url" type="url" required/></label>
+      <label>Artifact name<input className="input" name="artifact_name"/></label>
+      <label>Artifact repo<input className="input" name="artifact_repo" placeholder="lucaskerim123/V1-vercel-base"/></label>
+      <label>Artifact run ID<input className="input" name="artifact_run_id" inputMode="numeric"/></label>
+      <label>Source repo<input className="input" name="source_repo"/></label>
+      <label>Source ref<input className="input" name="source_ref"/></label>
+      <label>Source commit<input className="input" name="source_sha"/></label>
+      <label>SHA-256 checksum<input className="input" name="checksum"/></label>
+      <label>Title<input className="input" name="title" placeholder="OrbitFS Base 1.2.0"/></label>
+      <label>Description<textarea className="input" name="description" rows={2}/></label>
+      <label>Changelog<textarea className="input" name="changelog" rows={6} required/></label>
+      <label>Customer notes<textarea className="input" name="customer_notes" rows={3}/></label>
+      <label>Internal notes<textarea className="input" name="internal_notes" rows={3}/></label>
+      <label>Severity<select className="input" name="severity"><option value="normal">Normal</option><option value="important">Important</option><option value="critical">Critical</option></select></label>
+      <label>Rollout<select className="input" name="rollout"><option value="public">Public</option><option value="beta">Beta</option><option value="internal">Internal</option></select></label>
+      <label>Minimum installed version<input className="input" name="minimum_version"/></label>
+      <label>Rollback version<input className="input" name="rollback_version"/></label>
+      <label><input type="checkbox" name="required"/> Required update</label>
+      <button className="button">Create pending release</button>
+    </form></div>}
+    <section className="section card"><h2>Base releases</h2>{bases.length ? bases.map(releaseCard) : <p className="muted">No Base releases.</p>}</section>
+    <section className="section card"><h2>Update releases</h2>{updates.length ? updates.map(releaseCard) : <p className="muted">No Update releases.</p>}</section>
+  </main></div>;
+}
