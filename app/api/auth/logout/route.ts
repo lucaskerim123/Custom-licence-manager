@@ -1,3 +1,3 @@
-import { NextResponse } from 'next/server';
+import { redirect } from 'next/navigation';
 import { destroySession } from '../../../../lib/session';
-export async function POST(){await destroySession();return NextResponse.json({ok:true});}
+export async function POST(){await destroySession();redirect('/login');}
