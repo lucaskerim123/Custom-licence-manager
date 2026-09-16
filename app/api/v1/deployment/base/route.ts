@@ -4,7 +4,7 @@ import { getLatestRelease } from '../../../../../lib/core/releases';
 import { db } from '../../../../../lib/db';
 
 export async function GET(request: Request) {
-  if (!integrationAuthorized(request)) return NextResponse.json({ error:'UNAUTHORIZED' }, { status:401 });
+  if (!(await integrationAuthorized(request, 'deployment.read'))) return NextResponse.json({ error:'UNAUTHORIZED' }, { status:401 });
   const url=new URL(request.url);const product=url.searchParams.get('product')?.toLowerCase();const channel=url.searchParams.get('channel')||'stable';
   if(!product)return NextResponse.json({error:'product is required'},{status:400});
   const settings=(await db().query('select system_enabled,deployment_enabled from system_settings where id=true')).rows[0];
