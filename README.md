@@ -1,56 +1,119 @@
 # Custom License Manager
 
-Standalone licensing authority and deployment/release control plane for OrbitFS and other products. This application has its **own users, authentication, PostgreSQL database, settings and administration**. It does not require Billing Store to run.
+A standalone licensing authority and deployment/release control plane. It runs by itself: its database, users, authentication, settings, products, licenses, validation, activations, releases and deployment metadata all belong to this application.
 
-## Authority boundary
+## Architecture
 
-- **Users/auth:** local accounts and server-side sessions belong to this application.
-- **License authority:** issuing, hashing, status, enforcement and validation decisions live here.
-- **Products:** product records and validation policies live here.
-- **Base deployment:** published base-installation artifacts and source refs live here.
-- **Update releaser:** published update releases, channels, versions and checksums live here.
-- **System controls:** online/offline, licensing authority and maintenance mode are controlled locally.
-- **Audit:** administrative and integration actions are recorded here.
-- **External systems:** Billing Store and product/deployment clients connect to the integration API. They are clients of this system, not dependencies of it.
+```text
+Admin browser
+    -> Next.js server components/actions
+    -> shared core services
+    -> PostgreSQL
+
+Billing Store / installed products / deployer / updater
+    -> authenticated /api/v1/* integration boundary
+    -> same shared core services
+    -> PostgreSQL
+```
+
+The admin UI does **not** call the external integration API to manage itself. The UI and external API use the same internal services, so there is one licensing authority and no duplicated business logic.
+
+Billing Store is a client, not a dependency. It can be offline without taking the License Manager down. Installed products likewise ask this system's validation API when they need a license decision.
+
+## What this system owns
+
+- Local Owner/Admin/Operator/Viewer accounts and sessions.
+- Product registration and product status.
+- License generation, hashing, issuing, suspension/revocation and expiry handling.
+- Installation activations and last-seen information.
+- Base-release and update-release metadata, channels, artifacts and checksums.
+- System online/offline, licensing, maintenance, release and deployment controls.
+- Audit records.
 
 ## Database
 
-For a new database, run `database/schema.sql`. For an existing database created by an earlier version, run `database/migrate.sql` after the schema. The schema uses PostgreSQL foreign keys, unique constraints, status checks, indexes and timestamp triggers.
+For a new PostgreSQL database, run `database/schema.sql`.
 
-Create the first administrator with:
+For an existing installation, run `database/migrate.sql` before deploying the new application.
 
-```bash
-npm install
-npm run bootstrap-admin
+License plaintext is never stored. Only a SHA-256 hash and last four characters are persisted.
+
+## First deployment
+
+1. Create a PostgreSQL database.
+2. Run `database/schema.sql`.
+3. Deploy the Next.js project to Vercel.
+4. Configure `DATABASE_URL` and `DATABASE_SSL`.
+5. Configure a long random `INTEGRATION_API_TOKEN`.
+6. Either set `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` and run `npm run bootstrap-admin`, or open `/setup` after the database is initialized and create the first Owner account.
+
+Never put the integration token or database credentials in `NEXT_PUBLIC_*` variables.
+
+## External API
+
+Every integration endpoint except health requires:
+
+`Authorization: Bearer INTEGRATION_API_TOKEN`
+
+### Health
+
+`GET /api/v1/health`
+
+### License issuance
+
+`POST /api/v1/licenses`
+
+```json
+{
+  "product": "orbitfs",
+  "customer_external_id": "customer-123",
+  "external_reference": "order-456",
+  "expires_at": "2030-01-01T00:00:00Z",
+  "metadata": {}
+}
 ```
 
-using `DATABASE_URL`, `DATABASE_SSL`, `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`. The bootstrap command creates or resets the local owner account; it does not contact Billing Store.
+The response contains the plaintext `license_key` once. The caller must securely store it.
 
-## Local development
+### License validation
 
-```bash
-npm install
-npm run dev
+`POST /api/v1/licenses/validate`
+
+```json
+{
+  "license_key": "LIC-...",
+  "product": "orbitfs",
+  "installation_id": "machine-123",
+  "product_version": "2.0.0"
+}
 ```
 
-## Vercel
+The manager hashes the supplied key, finds the registered product/license, checks authority state, product status, license status and expiry, then records the installation activation when valid.
 
-Deploy this repository as a Next.js project. Configure the variables in `.env.example`. Keep `DATABASE_URL`, `INTEGRATION_API_TOKEN` and administrator bootstrap credentials server-side; do not use `NEXT_PUBLIC_` for secrets.
+### Base deployment
 
-## External integration API
+`GET /api/v1/deployment/base?product=orbitfs&channel=stable`
 
-All external integration requests use `Authorization: Bearer INTEGRATION_API_TOKEN`.
+Returns the latest published base release for the product.
 
-| Endpoint | Purpose |
-|---|---|
-| `POST /api/license/issue` | External system requests a new license |
-| `POST /api/license/validate` | Product validates a license |
-| `GET /api/deployment/base?product=<slug>` | Retrieves latest published base deployment |
-| `GET /api/releases` | Retrieves release metadata |
-| `POST /api/releases` | Creates a base or update release |
+### Release updater
 
-Billing Store can call these endpoints for its licensing, base deployment and release/update workflows. **There is no Billing Store endpoint, database dependency, callback requirement or Billing Store user system inside this application.**
+`GET /api/v1/releases?product=orbitfs&channel=stable&type=update`
 
-## Security model
+`GET /api/v1/releases?product=orbitfs&channel=stable&type=base`
 
-The browser admin UI authenticates against the local `users` and `user_sessions` tables. External integrations use the separate integration token. License keys are stored only as SHA-256 hashes; the plaintext key is returned only in the issuance response and is not persisted.
+`POST /api/v1/releases`
+
+The same release records are managed locally in the admin panel or supplied by an authenticated deployment/release client.
+
+## Local administration
+
+- `/` — control-plane overview
+- `/licenses` — issue and inspect licenses
+- `/products` — register/disable products
+- `/releases` — create and inspect base/update releases
+- `/users` — manage local users
+- `/settings` — take external authority, licensing, release or deployment services online/offline
+- `/api-docs` — integration contract
+
+Turning **External authority offline** does not lock the administrator out of the panel. It causes external authority operations to return an unavailable response while the local control plane remains accessible.
