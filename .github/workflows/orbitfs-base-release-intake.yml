@@ -1,0 +1,35 @@
+name: OrbitFS Base Release Intake
+
+on:
+  repository_dispatch:
+    types: [orbitfs-base-release]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit release to License Manager
+        env:
+          LICENSE_MANAGER_INGEST_URL: ${{ secrets.LICENSE_MANAGER_INGEST_URL }}
+          LICENSE_MANAGER_INGEST_TOKEN: ${{ secrets.LICENSE_MANAGER_INGEST_TOKEN }}
+          PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          test -n "$LICENSE_MANAGER_INGEST_URL"
+          test -n "$LICENSE_MANAGER_INGEST_TOKEN"
+          test -n "$PAYLOAD"
+          python - <<'PY' > /tmp/payload.json
+          import json, os
+          payload=json.loads(os.environ['PAYLOAD'])
+          payload['event_type']='orbitfs-base-release'
+          print(json.dumps(payload))
+          PY
+          curl --fail-with-body --silent --show-error \
+            -X POST "$LICENSE_MANAGER_INGEST_URL" \
+            -H 'content-type: application/json' \
+            -H "authorization: Bearer $LICENSE_MANAGER_INGEST_TOKEN" \
+            --data-binary @/tmp/payload.json
