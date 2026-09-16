@@ -1,22 +1,30 @@
 # Custom License Manager
 
-Independent licensing and deployment control plane designed to connect to `lucaskerim123/V2_Billing_Store` while keeping licensing authority inside this application.
+Standalone licensing authority and deployment/release control plane for OrbitFS and other products. This application has its **own users, authentication, PostgreSQL database, settings and administration**. It does not require Billing Store to run.
 
-## Architecture
+## Authority boundary
 
-- **License authority:** issuing, status, enforcement and validation decisions live here.
+- **Users/auth:** local accounts and server-side sessions belong to this application.
+- **License authority:** issuing, hashing, status, enforcement and validation decisions live here.
 - **Products:** product records and validation policies live here.
-- **Base deployment:** release records identify base-installation artifacts and source refs.
-- **Update releaser:** release records support existing-installation updates, channels and versions.
-- **Billing Store:** exchanges customer/order/payment context through authenticated API calls. It does **not** create or sign licenses.
-- **Products:** call `/api/license/validate` for an authoritative license decision.
-- **Admin UI:** uses the application's own server-side database functions. It does not call its own public API to manage settings/products/licenses.
-
-This separation prevents the admin panel from becoming dependent on its own external integration API.
+- **Base deployment:** published base-installation artifacts and source refs live here.
+- **Update releaser:** published update releases, channels, versions and checksums live here.
+- **System controls:** online/offline, licensing authority and maintenance mode are controlled locally.
+- **Audit:** administrative and integration actions are recorded here.
+- **External systems:** Billing Store and product/deployment clients connect to the integration API. They are clients of this system, not dependencies of it.
 
 ## Database
 
-Run `database/schema.sql` against the PostgreSQL database configured by `DATABASE_URL`.
+Run `database/schema.sql` against PostgreSQL. The schema creates users, sessions, products, licenses, activations, releases, system settings and audit events with foreign keys, unique constraints and indexes.
+
+Create the first administrator with:
+
+```bash
+npm ci
+npm run bootstrap-admin
+```
+
+using `DATABASE_URL`, `DATABASE_SSL`, `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`.
 
 ## Local development
 
@@ -27,17 +35,22 @@ npm run dev
 
 ## Vercel
 
-Create a Vercel project from this repository, use the Next.js preset, and configure the variables in `.env.example`. Keep all service tokens server-side; never expose them with `NEXT_PUBLIC_`.
+Deploy this repository as a Next.js project. Configure the variables in `.env.example`. Keep `DATABASE_URL` and `INTEGRATION_API_TOKEN` server-side; do not use `NEXT_PUBLIC_` for secrets.
 
-## External API
+## External integration API
 
-| Endpoint | Purpose | Auth |
-|---|---|---|
-| `POST /api/license/validate` | Product license validation | Public integration boundary |
-| `POST /api/billing/orders` | Billing Store -> Master order context | `BILLING_API_TOKEN` |
-| `GET/POST /api/releases` | Release/deployer integration | `DEPLOYER_API_TOKEN` |
-| `GET/PATCH /api/admin/settings` | External administration automation | `ADMIN_API_TOKEN` |
+All external integration requests use `Authorization: Bearer INTEGRATION_API_TOKEN`.
 
-## Reference architecture
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/license/issue` | External system requests a new license |
+| `POST /api/license/validate` | Product validates a license |
+| `GET /api/deployment/base?product=<slug>` | Retrieves latest published base deployment |
+| `GET /api/releases` | Retrieves published/draft release metadata |
+| `POST /api/releases` | Creates a base or update release |
 
-The structure follows the authority boundary established in `OrbitFS-License-Master-V2`: the Master owns licensing and release authority, while `V2_Billing_Store` remains the customer/order/billing system. The reference repository documents the same separation and service-token model.
+Billing Store can call these endpoints for its licensing, base deployment and release/update workflows. **There is no Billing Store endpoint, database dependency, callback requirement or Billing Store user system inside this application.**
+
+## Security model
+
+The browser admin UI authenticates against the local `users` and `user_sessions` tables. External integrations use the separate integration token. License keys are stored only as SHA-256 hashes; the plaintext key is returned once at issuance and is not persisted.
