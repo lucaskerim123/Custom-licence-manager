@@ -1,16 +1,15 @@
-import { NextRequest } from 'next/server';
 import { getSessionUser } from './session';
 
-export function serviceAuthorized(request: NextRequest, expected: string | undefined) {
+export function serviceAuthorized(request: Request, expected: string | undefined) {
   if (!expected) return false;
   return request.headers.get('authorization') === `Bearer ${expected}`;
 }
 
-export function integrationAuthorized(request: NextRequest) {
+export function integrationAuthorized(request: Request) {
   return serviceAuthorized(request, process.env.INTEGRATION_API_TOKEN);
 }
 
-export function adminAuthorized(request: NextRequest) {
+export function adminAuthorized(request: Request) {
   return serviceAuthorized(request, process.env.ADMIN_API_TOKEN);
 }
 
