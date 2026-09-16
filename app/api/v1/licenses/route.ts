@@ -4,15 +4,16 @@ import {db} from '../../../../lib/db';
 import {issueLicense} from '../../../../lib/core/licenses';
 
 export async function GET(request:Request){
-  if(!(await integrationAuthorized(request,'releases.read')))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
+  const auth=(await integrationAuthorized(request,'license.manage'))||(await integrationAuthorized(request,'releases.read'));
+  if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
   const url=new URL(request.url);const product=url.searchParams.get('product')?.toLowerCase();
   const params:any[]=[];let where="where 1=1";if(product){params.push(product);where+=" and p.slug=$1";}
-  const rows=(await db().query(`select l.id,l.status,l.expires_at,l.external_reference,p.slug product,p.name product_name,l.customer_external_id,l.created_at from licenses l join products p on p.id=l.product_id ${where} order by l.created_at desc limit 200`,params)).rows;
+  const rows=(await db().query(`select l.id,l.status,l.expires_at,l.external_reference,p.slug product,p.name product_name,l.customer_external_id,l.created_at,right(coalesce(l.license_key,''),4) license_key_last4 from licenses l join products p on p.id=l.product_id ${where} order by l.created_at desc limit 200`,params)).rows;
   return NextResponse.json({licenses:rows});
 }
 
 export async function POST(request:Request){
-  if(!integrationAuthorized(request))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
+  if(!integrationAuthorized(request,'license.issue'))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
   const body=await request.json().catch(()=>null);const product=String(body?.product??'').trim().toLowerCase();
   if(!product)return NextResponse.json({error:'product is required'},{status:400});
   const p=(await db().query("select id from products where slug=$1 and status='active'",[product])).rows[0];
