@@ -30,18 +30,55 @@ function scopeAllows(granted: ApiScope[], required: ApiScope) {
   return false;
 }
 
+function parseScopes(value: unknown): ApiScope[] {
+  if (Array.isArray(value)) return value.filter((x): x is ApiScope => typeof x === 'string') as ApiScope[];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter((x): x is ApiScope => typeof x === 'string') as ApiScope[];
+    } catch {}
+    return value.split(',').map(x => x.trim()).filter(Boolean) as ApiScope[];
+  }
+  return [];
+}
+
+function envMachineKey(key: string) {
+  const candidates = [
+    process.env.BILLING_API_TOKEN,
+    process.env.DEPLOYER_API_TOKEN,
+    process.env.MASTER_API_TOKEN,
+    process.env.INTEGRATION_API_TOKEN,
+  ].filter(Boolean) as string[];
+  return candidates.some(candidate => candidate.trim() === key);
+}
+
 export async function authenticateApiKey(request: Request, requiredScope?: ApiScope) {
-  const header = request.headers.get('authorization') || '';
-  if (!header.startsWith('Bearer ')) return null;
-  const key = header.slice(7).trim();
+  const authorization = request.headers.get('authorization') || '';
+  const apiHeader = request.headers.get('x-api-key') || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  const key = (match?.[1] || apiHeader).trim();
   if (!key) return null;
+
   const result = await db().query(`select id,name,scopes,status from api_keys where key_hash=$1 limit 1`, [hashKey(key)]);
   const client = result.rows[0];
-  if (!client || client.status !== 'active') return null;
-  const scopes: ApiScope[] = Array.isArray(client.scopes) ? client.scopes : [];
-  if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
-  await db().query(`update api_keys set last_used_at=now() where id=$1`, [client.id]);
-  return { ...client, scopes };
+
+  if (client) {
+    if (client.status !== 'active') return null;
+    const scopes = parseScopes(client.scopes);
+    if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
+    await db().query(`update api_keys set last_used_at=now() where id=$1`, [client.id]);
+    return { ...client, scopes };
+  }
+
+  // Keep explicitly configured machine tokens compatible with the same API
+  // contract. This is a fallback only; UI-created API keys remain authoritative.
+  if (envMachineKey(key)) {
+    const scopes: ApiScope[] = ['license.issue', 'license.validate', 'license.manage', 'releases.read', 'releases.write', 'deployment.read', 'deployment.write'];
+    if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
+    return { name: 'environment-machine-token', scopes };
+  }
+
+  return null;
 }
 
 export async function revokeApiKey(id: string, actorUserId: string) {
