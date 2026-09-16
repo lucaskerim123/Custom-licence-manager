@@ -16,6 +16,7 @@ export async function POST(request:Request){
   if(!product)return NextResponse.json({error:'Product not found or disabled',code:'PRODUCT_NOT_FOUND'},{status:404});
   try{
     const result=await issueLicense({productId:product.id,customerExternalId:body?.customer_external_id,externalReference:body?.external_reference,expiresAt:body?.expires_at?new Date(body.expires_at):null,actor:`api:${auth.name}`,metadata:body?.metadata});
-    return NextResponse.json({id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,already_issued:Boolean((result as any).alreadyIssued)});
+    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,already_issued:Boolean((result as any).alreadyIssued)};
+    return NextResponse.json({...license,license});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Unable to issue license',code:'LICENSE_ISSUE_FAILED'},{status:500});}
 }
