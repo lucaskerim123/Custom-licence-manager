@@ -41,7 +41,10 @@ create table if not exists activations (
 create table if not exists releases (
   id uuid primary key default gen_random_uuid(), product_id uuid not null references products(id), channel text not null default 'stable' check(channel ~ '^[a-z0-9][a-z0-9._-]*$'), version text not null,
   release_type text not null check(release_type in ('base','update')), source_repo text, source_ref text, artifact_url text, checksum text,
-  status text not null default 'draft' check(status in ('draft','published','disabled')), notes text, created_at timestamptz not null default now(), published_at timestamptz,
+  status text not null default 'draft' check(status in ('draft','published','disabled')), review_status text not null default 'pending' check(review_status in ('pending','approved','rejected')),
+  deployment_status text not null default 'not_started' check(deployment_status in ('not_started','queued','deploying','deployed','failed')),
+  source_sha text, artifact_name text, artifact_repo text, artifact_run_id bigint, vercel_ready boolean not null default false, supabase_ready boolean not null default false,
+  customer_publication_repo text, notes text, created_at timestamptz not null default now(), published_at timestamptz,
   unique(product_id, channel, version, release_type)
 );
 
@@ -65,6 +68,7 @@ create index if not exists licenses_status_idx on licenses(status);
 create index if not exists activations_license_idx on activations(license_id);
 create index if not exists releases_product_idx on releases(product_id);
 create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);
+create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);
 create index if not exists api_keys_status_idx on api_keys(status);
 create index if not exists audit_created_idx on audit_events(created_at desc);
 
@@ -83,3 +87,12 @@ alter table user_sessions add column if not exists ip_address text;
 alter table licenses add column if not exists external_reference text;
 alter table releases add column if not exists checksum text;
 alter table releases add column if not exists published_at timestamptz;
+alter table releases add column if not exists review_status text not null default 'pending';
+alter table releases add column if not exists deployment_status text not null default 'not_started';
+alter table releases add column if not exists source_sha text;
+alter table releases add column if not exists artifact_name text;
+alter table releases add column if not exists artifact_repo text;
+alter table releases add column if not exists artifact_run_id bigint;
+alter table releases add column if not exists vercel_ready boolean not null default false;
+alter table releases add column if not exists supabase_ready boolean not null default false;
+alter table releases add column if not exists customer_publication_repo text;
