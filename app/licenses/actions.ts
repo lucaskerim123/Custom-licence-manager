@@ -1,5 +1,20 @@
 'use server';
-import crypto from 'node:crypto';
+import { issueLicense } from '../../lib/core/licenses';
 import { db } from '../../lib/db';
 import { requireUser } from '../../lib/session';
-export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:string},formData:FormData){const user=await requireUser();const product=String(formData.get('product_id')||'');if(!product)return {ok:false,key:'',error:'Select a product'};const key=`LIC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;const hash=crypto.createHash('sha256').update(key).digest('hex');const result=await db().query(`insert into licenses(license_key_hash,license_key_last4,product_id,customer_external_id,external_reference,expires_at) values($1,$2,$3,$4,$5,$6) returning id`,[hash,key.slice(-4),product,String(formData.get('customer')||'')||null,String(formData.get('reference')||'')||null,formData.get('expires')?new Date(String(formData.get('expires'))):null]);await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.issue','license',$3,$4)`,[user.id,user.email,result.rows[0].id,JSON.stringify({license_key_last4:key.slice(-4)})]);return {ok:true,key,error:''};}
+
+export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:string}, formData:FormData){
+  const user=await requireUser();
+  if(!['owner','admin','operator'].includes(user.role)) return {ok:false,key:'',error:'You do not have permission to issue licenses'};
+  const productId=String(formData.get('product_id')||'');
+  if(!productId) return {ok:false,key:'',error:'Select a product'};
+  const product=(await db().query("select id from products where id=$1 and status='active'",[productId])).rows[0];
+  if(!product) return {ok:false,key:'',error:'Product not found or disabled'};
+  const expires=String(formData.get('expires')||'');
+  let expiresAt:Date|null=null;
+  if(expires){expiresAt=new Date(expires);if(Number.isNaN(expiresAt.getTime()))return {ok:false,key:'',error:'Invalid expiry'};}
+  try{
+    const result=await issueLicense({productId,customerExternalId:String(formData.get('customer')||'')||null,externalReference:String(formData.get('reference')||'')||null,expiresAt,actorUserId:user.id,actor:user.email});
+    return {ok:true,key:result.key,error:''};
+  }catch(e){return {ok:false,key:'',error:e instanceof Error?e.message:'Unable to issue license'};}
+}
