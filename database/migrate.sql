@@ -11,7 +11,6 @@ create table if not exists user_sessions (
   id uuid primary key default gen_random_uuid(), user_id uuid not null references users(id) on delete cascade,
   token_hash text unique not null, expires_at timestamptz not null, created_at timestamptz not null default now(), last_seen_at timestamptz not null default now(), user_agent text, ip_address text
 );
-
 alter table if exists system_settings add column if not exists release_system_enabled boolean not null default true;
 alter table if exists system_settings add column if not exists deployment_enabled boolean not null default true;
 alter table if exists user_sessions add column if not exists user_agent text;
@@ -30,18 +29,6 @@ alter table if exists releases add column if not exists supabase_ready boolean n
 alter table if exists releases add column if not exists customer_publication_repo text;
 alter table if exists releases add column if not exists manifest jsonb not null default '{}'::jsonb;
 alter table if exists audit_events add column if not exists actor_user_id uuid references users(id) on delete set null;
-
-create index if not exists users_status_idx on users(status);
-create index if not exists sessions_user_idx on user_sessions(user_id);
-create index if not exists licenses_status_idx on licenses(status);
-create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);
-create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);
-create index if not exists activations_last_seen_idx on activations(last_seen_at desc);
-
-create or replace function touch_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new.updated_at; end $$;
-drop trigger if exists users_touch on users;
-create trigger users_touch before update on users for each row execute function touch_updated_at();
-drop trigger if exists products_touch on products;
-create trigger products_touch before update on products for each row execute function touch_updated_at();
-drop trigger if exists licenses_touch on licenses;
-create trigger licenses_touch before update on licenses for each row execute function touch_updated_at();
+create index if not exists users_status_idx on users(status);create index if not exists sessions_user_idx on user_sessions(user_id);create index if not exists licenses_status_idx on licenses(status);create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);create index if not exists activations_last_seen_idx on activations(last_seen_at desc);
+create or replace function touch_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
+drop trigger if exists users_touch on users;create trigger users_touch before update on users for each row execute function touch_updated_at();drop trigger if exists products_touch on products;create trigger products_touch before update on products for each row execute function touch_updated_at();drop trigger if exists licenses_touch on licenses;create trigger licenses_touch before update on licenses for each row execute function touch_updated_at();
