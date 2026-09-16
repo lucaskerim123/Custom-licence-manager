@@ -13,8 +13,17 @@ export function generateApiKey() {
 
 export async function createApiKey(input: { name: string; scopes: ApiScope[]; actorUserId: string }) {
   const key = generateApiKey();
-  const result = await db().query(`insert into api_keys(name,key_hash,key_last4,scopes,created_by) values($1,$2,$3,$4,$5) returning id,name,key_last4,scopes,status,created_at`, [input.name.trim(), hashKey(key), key.slice(-4), JSON.stringify(input.scopes), input.actorUserId]);
+  const scopes = Array.from(new Set(input.scopes));
+  const result = await db().query(`insert into api_keys(name,key_hash,key_last4,scopes,created_by) values($1,$2,$3,$4,$5) returning id,name,key_last4,scopes,status,created_at`, [input.name.trim(), hashKey(key), key.slice(-4), JSON.stringify(scopes), input.actorUserId]);
   return { ...result.rows[0], key };
+}
+
+function scopeAllows(granted: ApiScope[], required: ApiScope) {
+  if (granted.includes(required)) return true;
+  if (granted.includes('license.manage') && ['license.issue', 'license.validate'].includes(required)) return true;
+  if (granted.includes('releases.write') && required === 'releases.read') return true;
+  if (granted.includes('deployment.write') && required === 'deployment.read') return true;
+  return false;
 }
 
 export async function authenticateApiKey(request: Request, requiredScope?: ApiScope) {
@@ -25,10 +34,10 @@ export async function authenticateApiKey(request: Request, requiredScope?: ApiSc
   const result = await db().query(`select id,name,scopes,status from api_keys where key_hash=$1 limit 1`, [hashKey(key)]);
   const client = result.rows[0];
   if (!client || client.status !== 'active') return null;
-  const scopes = Array.isArray(client.scopes) ? client.scopes : [];
-  if (requiredScope && !scopes.includes(requiredScope)) return null;
+  const scopes: ApiScope[] = Array.isArray(client.scopes) ? client.scopes : [];
+  if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
   await db().query(`update api_keys set last_used_at=now() where id=$1`, [client.id]);
-  return client;
+  return { ...client, scopes };
 }
 
 export async function revokeApiKey(id: string, actorUserId: string) {
