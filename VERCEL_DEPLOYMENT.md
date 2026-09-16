@@ -35,7 +35,7 @@ Never commit real values or expose server secrets as `NEXT_PUBLIC_*` variables.
 ## Base release pipeline
 `lucaskerim123/V1-vercel-base` builds and packages the complete Base release on demand. The GitHub Actions workflow sends the release metadata to `POST /api/internal/releases/ingest` using a License Master managed API key with the `releases.write` scope.
 
-Because the Base repository is private, the workflow stores the GitHub release asset as an API release-asset URL. License Master uses `GITHUB_RELEASE_TOKEN` to retrieve the private asset and proxies it through the authenticated release artifact endpoint. GitHub's release-asset API supports fine-grained tokens with Contents: Read-only access. citeturn2search0
+Because the Base repository is private, the workflow stores the GitHub release asset as an API release-asset URL. License Master uses `GITHUB_RELEASE_TOKEN` to retrieve the private asset and proxies it through the authenticated release artifact endpoint.
 
 The resulting flow is:
 
