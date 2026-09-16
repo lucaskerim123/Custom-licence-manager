@@ -1,12 +1,20 @@
 import { NextRequest } from 'next/server';
+import { getSessionUser } from './session';
 
 export function serviceAuthorized(request: NextRequest, expected: string | undefined) {
   if (!expected) return false;
-  const value = request.headers.get('authorization');
-  return value === `Bearer ${expected}`;
+  return request.headers.get('authorization') === `Bearer ${expected}`;
+}
+
+export function integrationAuthorized(request: NextRequest) {
+  return serviceAuthorized(request, process.env.INTEGRATION_API_TOKEN);
 }
 
 export function adminAuthorized(request: NextRequest) {
-  const token = process.env.ADMIN_API_TOKEN;
-  return serviceAuthorized(request, token);
+  return serviceAuthorized(request, process.env.ADMIN_API_TOKEN);
+}
+
+export async function localAdminAuthorized() {
+  const user = await getSessionUser();
+  return user && ['owner','admin','operator'].includes(user.role) ? user : null;
 }
