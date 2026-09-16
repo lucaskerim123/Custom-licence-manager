@@ -21,12 +21,13 @@ export async function POST(request:Request){
     const product=(await pool.query(`insert into products(slug,name,status) values($1,$2,'active') on conflict(slug) do update set name=excluded.name,updated_at=now() returning id`,[String(body.product_id),String(body.product??'OrbitFS Base')])).rows[0];
     const existing=(await pool.query(`select id from releases where product_id=$1 and channel=$2 and version=$3 and release_type='base'`,[product.id,String(body.channel??'stable').toLowerCase(),String(body.version)])).rows[0];
     if(existing) return NextResponse.json({ok:true,duplicate:true,release_id:existing.id});
+    const changelog=typeof body.changelog==='string'&&body.changelog.trim()?body.changelog.trim():null;
     const row=await createRelease({
       productId:product.id,channel:String(body.channel??'stable').toLowerCase(),version:String(body.version),releaseType:'base',
       sourceRepo:String(body.source_repo),sourceRef:String(body.source_branch??'base-release'),sourceSha:String(body.source_sha),
       artifactName:String(body.artifact_name),artifactRepo:String(body.artifact_repo??'lucaskerim123/V1-vercel-base'),artifactRunId:Number(body.artifact_run_id),
       vercelReady:Boolean(body.vercel_ready),supabaseReady:Boolean(body.supabase_ready),customerPublicationRepo:String(body.customer_publication_repo??'lucaskerim123/V2_Billing_Store'),
-      artifactUrl:null,reviewStatus:'pending',deploymentStatus:'not_started',notes:'Automatically received from the OrbitFS Base release pipeline.',actor:'orbitfs-base-release'
+      artifactUrl:null,reviewStatus:'pending',deploymentStatus:'not_started',notes:changelog??'Automatically received from the OrbitFS Base release pipeline.',actor:'orbitfs-base-release'
     });
     return NextResponse.json({ok:true,release_id:row.id,status:row.status,review_status:row.review_status});
   }catch(error){
