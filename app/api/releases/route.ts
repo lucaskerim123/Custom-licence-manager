@@ -3,5 +3,37 @@ import { db } from '../../../lib/db';
 import { integrationAuthorized } from '../../../lib/auth';
 import { createRelease, listReleases } from '../../../lib/core/releases';
 
-export async function GET(request:Request){if(!integrationAuthorized(request))return NextResponse.json({error:'Unauthorized'},{status:401});return NextResponse.json(await listReleases());}
-export async function POST(request:Request){if(!integrationAuthorized(request))return NextResponse.json({error:'Unauthorized'},{status:401});const b=await request.json().catch(()=>null);if(!b?.product_id||!b?.version||!['base','update'].includes(b?.release_type))return NextResponse.json({error:'product_id, version and release_type(base|update) are required'},{status:400});try{const p=(await db().query('select id from products where id=$1 and status=\'active\'',[b.product_id])).rows[0];if(!p)return NextResponse.json({error:'PRODUCT_NOT_FOUND'},{status:404});const row=await createRelease({productId:p.id,channel:String(b.channel??'stable'),version:String(b.version),releaseType:b.release_type,sourceRepo:b.source_repo??null,sourceRef:b.source_ref??null,artifactUrl:b.artifact_url??null,checksum:b.checksum??null,notes:b.notes??null,publish:b.status==='published'});return NextResponse.json(row,{status:201});}catch(e){return NextResponse.json({error:e instanceof Error?e.message:'Unable to create release'},{status:503});}}
+export async function GET(request: Request) {
+  const auth = await integrationAuthorized(request, 'releases.read');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 });
+  const rows = await listReleases();
+  // Keep the API contract stable for external clients. Billing Store consumes
+  // the named `releases` collection and uses `component`; the DB uses product.
+  const releases = rows.map((row: any) => ({
+    ...row,
+    component: row.component || row.product,
+    release_notes: row.release_notes || row.notes || null,
+    source_commit: row.source_commit || row.source_sha || null,
+  }));
+  return NextResponse.json({ releases });
+}
+
+export async function POST(request: Request) {
+  const auth = await integrationAuthorized(request, 'releases.write');
+  if (!auth) return NextResponse.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, { status: 401 });
+  const b = await request.json().catch(() => null);
+  if (!b?.product_id && !b?.product && !b?.product_code) return NextResponse.json({ error: 'product_id or product is required' }, { status: 400 });
+  if (!b?.version || !['base', 'update'].includes(b?.release_type)) return NextResponse.json({ error: 'version and release_type(base|update) are required' }, { status: 400 });
+  try {
+    const productLookup = b.product_id || b.product || b.product_code;
+    const product = (await db().query(
+      b.product_id ? "select id from products where id=$1 and status='active'" : "select id from products where slug=$1 and status='active'",
+      [productLookup]
+    )).rows[0];
+    if (!product) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND' }, { status: 404 });
+    const row = await createRelease({ productId: product.id, channel: String(b.channel ?? 'stable'), version: String(b.version), releaseType: b.release_type, sourceRepo: b.source_repo ?? null, sourceRef: b.source_ref ?? null, artifactUrl: b.artifact_url ?? null, checksum: b.checksum ?? null, notes: b.notes ?? null, publish: b.status === 'published' });
+    return NextResponse.json({ ...row, component: (row as any).component || b.product || b.product_code || null }, { status: 201 });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Unable to create release' }, { status: 503 });
+  }
+}
