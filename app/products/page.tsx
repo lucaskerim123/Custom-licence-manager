@@ -1,0 +1,16 @@
+import { db } from '../../lib/db';
+
+export const dynamic = 'force-dynamic';
+
+async function createProduct(formData: FormData) {
+  'use server';
+  const name = String(formData.get('name') ?? '').trim();
+  const slug = String(formData.get('slug') ?? '').trim().toLowerCase();
+  if (!name || !slug) return;
+  await db().query('insert into products(name,slug,description) values($1,$2,$3) on conflict(slug) do nothing', [name,slug,String(formData.get('description') ?? '')]);
+}
+
+export default async function Products() {
+  const result = await db().query('select id,name,slug,status,created_at from products order by created_at desc');
+  return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a className="active" href="/products">Products</a><a href="/releases">Releases</a><a href="/settings">System Settings</a><a href="/api-docs">API Contract</a></nav></aside><main className="main"><h1 className="title">Products</h1><p className="muted">Products are registered here because this manager owns the licensing authority.</p><div className="section"><div className="card"><form className="form" action={createProduct}><label>Name<input className="input" name="name" required/></label><label>Slug<input className="input" name="slug" placeholder="orbitfs" required/></label><label>Description<input className="input" name="description"/></label><button className="button" type="submit">Create product</button></form></div></div><div className="section"><table className="table"><thead><tr><th>Name</th><th>Slug</th><th>Status</th><th>Created</th></tr></thead><tbody>{result.rows.map(p=><tr key={p.id}><td>{p.name}</td><td>{p.slug}</td><td><span className={`badge ${p.status==='active'?'ok':''}`}>{p.status}</span></td><td>{new Date(p.created_at).toLocaleString()}</td></tr>)}</tbody></table></div></main></div>;
+}
