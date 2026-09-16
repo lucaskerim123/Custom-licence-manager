@@ -1,0 +1,21 @@
+import crypto from 'node:crypto';
+import { NextResponse } from 'next/server';
+import { db } from '../../../../lib/db';
+import { integrationAuthorized } from '../../../../lib/auth';
+
+function makeKey(){return `LIC-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;}
+function hash(v:string){return crypto.createHash('sha256').update(v).digest('hex');}
+
+export async function POST(request:Request){
+  if(!integrationAuthorized(request as any)) return NextResponse.json({error:'Unauthorized'},{status:401});
+  const body=await request.json().catch(()=>null);const productId=String(body?.product_id||'');
+  if(!productId) return NextResponse.json({error:'product_id is required'},{status:400});
+  const settings=(await db().query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
+  if(!settings?.system_enabled || !settings?.licensing_enabled || settings?.maintenance_mode) return NextResponse.json({error:'License authority unavailable'},{status:503});
+  const product=(await db().query("select id,name from products where id=$1 and status='active'",[productId])).rows[0];
+  if(!product) return NextResponse.json({error:'Product not found or disabled'},{status:404});
+  const key=makeKey();
+  const result=await db().query(`insert into licenses(license_key_hash,license_key_last4,product_id,customer_external_id,external_reference,expires_at,metadata) values($1,$2,$3,$4,$5,$6,$7) returning id,issued_at,expires_at,status`,[hash(key),key.slice(-4),productId,body?.customer_external_id||null,body?.external_reference||null,body?.expires_at?new Date(body.expires_at):null,JSON.stringify(body?.metadata||{})]);
+  await db().query(`insert into audit_events(actor,action,resource_type,resource_id,details) values($1,$2,$3,$4,$5)`,['integration','license.issue','license',result.rows[0].id,JSON.stringify({product_id:productId,external_reference:body?.external_reference||null})]);
+  return NextResponse.json({license_key:key,license_id:result.rows[0].id,status:result.rows[0].status,issued_at:result.rows[0].issued_at,expires_at:result.rows[0].expires_at});
+}
