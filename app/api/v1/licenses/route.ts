@@ -13,7 +13,8 @@ export async function GET(request:Request){
 }
 
 export async function POST(request:Request){
-  if(!integrationAuthorized(request,'license.issue'))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
+  const auth=(await integrationAuthorized(request,'license.issue'))||(await integrationAuthorized(request,'license.manage'));
+  if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
   const body=await request.json().catch(()=>null);const product=String(body?.product??'').trim().toLowerCase();
   if(!product)return NextResponse.json({error:'product is required'},{status:400});
   const p=(await db().query("select id from products where slug=$1 and status='active'",[product])).rows[0];
