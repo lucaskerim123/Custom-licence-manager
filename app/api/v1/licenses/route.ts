@@ -4,7 +4,7 @@ import {db} from '../../../../lib/db';
 import {issueLicense} from '../../../../lib/core/licenses';
 
 export async function GET(request:Request){
-  const auth=(await integrationAuthorized(request,'license.manage'))||(await integrationAuthorized(request,'releases.read'));
+  const auth=(await integrationAuthorized(request,'license.manage'))||(await integrationAuthorized(request,'license.issue'))||(await integrationAuthorized(request,'releases.read'));
   if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
   const url=new URL(request.url);const product=url.searchParams.get('product')?.toLowerCase();
   const params:any[]=[];let where="where 1=1";if(product){params.push(product);where+=" and p.slug=$1";}
