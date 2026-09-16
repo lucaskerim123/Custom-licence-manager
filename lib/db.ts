@@ -6,10 +6,6 @@ function connectionString() {
   const raw = process.env.DATABASE_URL;
   if (!raw) throw new Error('DATABASE_URL is not configured');
 
-  // Supabase direct database hostnames can require IPv6 and are unreliable from
-  // some serverless environments. When the configured URL is a Supabase direct
-  // URL, transparently use the regional Supavisor transaction pooler instead.
-  // An explicit SUPABASE_POOLER_HOST always wins, so this remains portable.
   try {
     const url = new URL(raw);
     if (url.hostname.startsWith('db.') && url.hostname.endsWith('.supabase.co')) {
@@ -31,6 +27,13 @@ export function db() {
     pool = new Pool({
       connectionString: connectionString(),
       max: 5,
+      min: 0,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: 15_000,
+      lock_timeout: 5_000,
+      idle_in_transaction_session_timeout: 30_000,
+      maxLifetimeSeconds: 300,
       ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
     });
   }
