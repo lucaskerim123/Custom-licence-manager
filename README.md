@@ -15,27 +15,27 @@ Standalone licensing authority and deployment/release control plane for OrbitFS 
 
 ## Database
 
-Run `database/schema.sql` against PostgreSQL. The schema creates users, sessions, products, licenses, activations, releases, system settings and audit events with foreign keys, unique constraints and indexes.
+For a new database, run `database/schema.sql`. For an existing database created by an earlier version, run `database/migrate.sql` after the schema. The schema uses PostgreSQL foreign keys, unique constraints, status checks, indexes and timestamp triggers.
 
 Create the first administrator with:
 
 ```bash
-npm ci
+npm install
 npm run bootstrap-admin
 ```
 
-using `DATABASE_URL`, `DATABASE_SSL`, `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`.
+using `DATABASE_URL`, `DATABASE_SSL`, `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD`. The bootstrap command creates or resets the local owner account; it does not contact Billing Store.
 
 ## Local development
 
 ```bash
-npm ci
+npm install
 npm run dev
 ```
 
 ## Vercel
 
-Deploy this repository as a Next.js project. Configure the variables in `.env.example`. Keep `DATABASE_URL` and `INTEGRATION_API_TOKEN` server-side; do not use `NEXT_PUBLIC_` for secrets.
+Deploy this repository as a Next.js project. Configure the variables in `.env.example`. Keep `DATABASE_URL`, `INTEGRATION_API_TOKEN` and administrator bootstrap credentials server-side; do not use `NEXT_PUBLIC_` for secrets.
 
 ## External integration API
 
@@ -46,11 +46,11 @@ All external integration requests use `Authorization: Bearer INTEGRATION_API_TOK
 | `POST /api/license/issue` | External system requests a new license |
 | `POST /api/license/validate` | Product validates a license |
 | `GET /api/deployment/base?product=<slug>` | Retrieves latest published base deployment |
-| `GET /api/releases` | Retrieves published/draft release metadata |
+| `GET /api/releases` | Retrieves release metadata |
 | `POST /api/releases` | Creates a base or update release |
 
 Billing Store can call these endpoints for its licensing, base deployment and release/update workflows. **There is no Billing Store endpoint, database dependency, callback requirement or Billing Store user system inside this application.**
 
 ## Security model
 
-The browser admin UI authenticates against the local `users` and `user_sessions` tables. External integrations use the separate integration token. License keys are stored only as SHA-256 hashes; the plaintext key is returned once at issuance and is not persisted.
+The browser admin UI authenticates against the local `users` and `user_sessions` tables. External integrations use the separate integration token. License keys are stored only as SHA-256 hashes; the plaintext key is returned only in the issuance response and is not persisted.
