@@ -60,3 +60,6 @@ The old License API and old database are not required by this repository.
 9. Put a managed API key with `releases.write` into the `V1-vercel-base` GitHub Actions secret `LICENSE_MASTER_API_TOKEN`.
 
 No License Master private signing material should be placed in the Billing Store project.
+
+## Production deployment verification
+Production is deployed from `main`. Every functional change to the admin pages or release intake must result in a new Vercel production deployment before it is considered live. The Base Deployment page and Releases & Updates page are separate production routes: `/releases/base` and `/releases`.
