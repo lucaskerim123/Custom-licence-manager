@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../lib/auth';
 import { validateLicense } from '../../../../../lib/core/licenses';
+import { normalizeProductSlug } from '../../../../../lib/core/products';
 
 export async function POST(request: Request) {
   if (!integrationAuthorized(request)) return NextResponse.json({ valid: false, code: 'UNAUTHORIZED' }, { status: 401 });
   const body = await request.json().catch(() => null);
   const key = String(body?.license_key ?? '').trim();
-  const product = String(body?.product ?? '').trim().toLowerCase();
+  const product = normalizeProductSlug(String(body?.product ?? ''));
   const installationId = String(body?.installation_id ?? '').trim();
   if (!key || !product) return NextResponse.json({ valid: false, code: 'INVALID_REQUEST' }, { status: 400 });
   const result = await validateLicense({ key, productSlug: product, installationId: installationId || undefined, productVersion: body?.product_version ? String(body.product_version) : undefined, metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined });
