@@ -17,7 +17,10 @@ export async function POST(request:Request){
   try{
     const customerExternalId=body?.customer_external_id??body?.customerRef??null;
     const customerOverride=Boolean(body?.customer_override??body?.customerOverride) || String(customerExternalId||'').trim().toUpperCase()==='ADMIN';
-    const result=await issueLicense({productId:product.id,customerExternalId,customerOverride,externalReference:body?.external_reference??body?.orderRef??null,expiresAt:body?.expires_at?new Date(body.expires_at):null,actor:`api:${auth.name}`,metadata:body?.metadata});
+    const rawExpiry=body?.expires_at??body?.expiresAt??null;
+    const expiresAt=rawExpiry?new Date(String(rawExpiry)):null;
+    if(expiresAt&&Number.isNaN(expiresAt.getTime()))return NextResponse.json({error:'Invalid expiry date',code:'INVALID_EXPIRY'},{status:400});
+    const result=await issueLicense({productId:product.id,customerExternalId,customerOverride,externalReference:body?.external_reference??body?.orderRef??null,expiresAt,actor:`api:${auth.name}`,metadata:body?.metadata});
     const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
     return NextResponse.json({...license,license});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Unable to issue license',code:'LICENSE_ISSUE_FAILED'},{status:500});}

@@ -6,7 +6,7 @@ import { issueLicense } from '../../../lib/core/licenses';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const auth = (await integrationAuthorized(request, 'license.manage')) || (await integrationAuthorized(request, 'license.issue')) || (await integrationAuthorized(request, 'releases.read'));
+  const auth = await integrationAuthorized(request, 'license.manage') || await integrationAuthorized(request, 'license.issue');
   if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
   const url = new URL(request.url);
   const product = url.searchParams.get('product')?.toLowerCase();
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = (await integrationAuthorized(request, 'license.issue')) || (await integrationAuthorized(request, 'license.manage'));
+  const auth = await integrationAuthorized(request, 'license.issue') || await integrationAuthorized(request, 'license.manage');
   if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
   const body = await request.json().catch(() => null);
   const product = String(body?.product ?? body?.product_code ?? body?.productCode ?? '').trim().toLowerCase();
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
     const result = await issueLicense({
       productId: p.id,
       customerExternalId: body?.customer_external_id ?? body?.customerRef ?? null,
+      customerOverride: Boolean(body?.customer_override ?? body?.customerOverride),
       externalReference: body?.external_reference ?? body?.orderRef ?? null,
       expiresAt,
       actor: `api:${auth.name}`,
