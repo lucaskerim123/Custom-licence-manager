@@ -102,8 +102,7 @@ export default async function Releases() {
   };
 
   return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a href="/installations">Installations</a><a href="/products">Products</a><a href="/releases/base">Base Deployment</a><a className="active" href="/releases">Releases &amp; Updates</a><a href="/users">Users</a><a href="/settings">System Settings</a></nav></aside><main className="main">
-    <h1 className="title">Releases &amp; Updates</h1>
-    <p className="muted">Detailed update release management lives here. Base deployment is deliberately separate. Updates are validated, reviewed, approved and published before Billing Store can consume them.</p>
+    <div className="row" style={{justifyContent:'space-between',alignItems:'flex-start'}}><div><div className="muted" style={{textTransform:'uppercase',letterSpacing:'.08em'}}>Version Control</div><h1 className="title">Releases &amp; Updates</h1><p className="muted">This page is ONLY for OrbitFS update releases. Base Deployment is a separate page. Use this area for version control, validation, review, approval, publishing and rollback metadata.</p></div><span className="badge">UPDATES ONLY</span></div>
     {roles.includes(user.role) && <div className="section card"><h2>New Update</h2><form className="form" action={createUpdate}>
       <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.rows.map((p: any) => <option key={p.id} value={p.id}>{p.name} ({p.slug})</option>)}</select></label>
       <label>Version<input className="input" name="version" placeholder="1.2.1" required/></label>
