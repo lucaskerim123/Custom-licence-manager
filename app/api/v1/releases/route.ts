@@ -29,7 +29,6 @@ export async function POST(request: Request) {
     if (!(await integrationAuthorized(request, 'releases.write'))) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') return NextResponse.json({ error: 'INVALID_JSON' }, { status: 400 });
-
     const product = String(body.product ?? '').trim().toLowerCase();
     const version = String(body.version ?? '').trim();
     const artifactUrl = String(body.artifact_url ?? '').trim() || null;
@@ -37,16 +36,13 @@ export async function POST(request: Request) {
     const channel = String(body.channel ?? 'stable').trim().toLowerCase();
     if (!product || !version) return NextResponse.json({ error: 'product and version are required' }, { status: 400 });
     if (releaseType !== 'base' && releaseType !== 'update') return NextResponse.json({ error: 'INVALID_RELEASE_TYPE' }, { status: 400 });
-
     const pool = db();
     const settings = (await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];
     if (!settings?.system_enabled || !settings.release_system_enabled || (releaseType === 'base' && !settings.deployment_enabled)) return NextResponse.json({ error: 'AUTHORITY_UNAVAILABLE' }, { status: 503 });
     const p = (await pool.query("select id from products where slug=$1 and status='active'", [product])).rows[0];
     if (!p) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', product }, { status: 404 });
-
     const existing = (await pool.query(`select id,status,review_status,artifact_url from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4`, [p.id, channel, version, releaseType])).rows[0];
     if (existing) return NextResponse.json({ ok: true, duplicate: true, release: existing }, { status: 200 });
-
     const row = await createRelease({
       productId: p.id, channel, version, releaseType,
       sourceRepo: body.source_repo ? String(body.source_repo) : null,
@@ -61,6 +57,7 @@ export async function POST(request: Request) {
       artifactRunId: body.artifact_run_id ? Number(body.artifact_run_id) : null,
       vercelReady: Boolean(body.vercel_ready), supabaseReady: Boolean(body.supabase_ready),
       customerPublicationRepo: body.customer_publication_repo ? String(body.customer_publication_repo) : 'lucaskerim123/V2_Billing_Store',
+      manifest: body.manifest && typeof body.manifest === 'object' ? body.manifest : {},
       actor: 'orbitfs-release-api'
     });
     return NextResponse.json({ ok: true, release: row, status: row.status, review_status: row.review_status }, { status: 201 });
