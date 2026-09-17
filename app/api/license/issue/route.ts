@@ -15,8 +15,10 @@ export async function POST(request:Request){
   const product=(await db().query(productId?"select id from products where id=$1 and status='active'":"select id from products where slug=$1 and status='active'",[productId||productSlug])).rows[0];
   if(!product)return NextResponse.json({error:'Product not found or disabled',code:'PRODUCT_NOT_FOUND'},{status:404});
   try{
-    const result=await issueLicense({productId:product.id,customerExternalId:body?.customer_external_id,externalReference:body?.external_reference,expiresAt:body?.expires_at?new Date(body.expires_at):null,actor:`api:${auth.name}`,metadata:body?.metadata});
-    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,already_issued:Boolean((result as any).alreadyIssued)};
+    const customerExternalId=body?.customer_external_id??body?.customerRef??null;
+    const customerOverride=Boolean(body?.customer_override??body?.customerOverride) || String(customerExternalId||'').trim().toUpperCase()==='ADMIN';
+    const result=await issueLicense({productId:product.id,customerExternalId,customerOverride,externalReference:body?.external_reference??body?.orderRef??null,expiresAt:body?.expires_at?new Date(body.expires_at):null,actor:`api:${auth.name}`,metadata:body?.metadata});
+    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
     return NextResponse.json({...license,license});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Unable to issue license',code:'LICENSE_ISSUE_FAILED'},{status:500});}
 }
