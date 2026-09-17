@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../lib/auth';
 import { db } from '../../../../lib/db';
 import { createRelease } from '../../../../lib/core/releases';
+import { normalizeProductSlug } from '../../../../lib/core/products';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   try {
     if (!(await integrationAuthorized(request, 'releases.read'))) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
     const url = new URL(request.url);
-    const product = url.searchParams.get('product')?.toLowerCase();
+    const product = normalizeProductSlug(url.searchParams.get('product')||'');
     if (!product) return NextResponse.json({ error: 'product is required' }, { status: 400 });
     const channel = url.searchParams.get('channel') || 'stable';
     const type = (url.searchParams.get('type') || 'update') as 'base' | 'update';
