@@ -29,13 +29,13 @@ create table if not exists products (
 );
 create table if not exists licenses (
   id uuid primary key default gen_random_uuid(), license_key_hash text unique not null, license_key_last4 text not null,
-  product_id uuid not null references products(id), customer_external_id text, external_reference text,
+  product_id uuid not null references products(id), customer_external_id text, customer_override boolean not null default false, external_reference text,
   status text not null default 'active' check(status in ('pending','active','suspended','revoked','expired')), issued_at timestamptz not null default now(), expires_at timestamptz,
   metadata jsonb not null default '{}'::jsonb, created_at timestamptz not null default now(), updated_at timestamptz not null default now(), check(expires_at is null or expires_at > issued_at)
 );
 create table if not exists activations (
   id uuid primary key default gen_random_uuid(), license_id uuid not null references licenses(id) on delete cascade, installation_id text not null,
-  product_version text, last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb, unique(license_id, installation_id)
+  product_version text, status text not null default 'active' check(status in ('active','locked','terminated')), last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb, unique(license_id, installation_id)
 );
 create table if not exists releases (
   id uuid primary key default gen_random_uuid(), product_id uuid not null references products(id), channel text not null default 'stable' check(channel ~ '^[a-z0-9][a-z0-9._-]*$'), version text not null,
@@ -55,7 +55,7 @@ create table if not exists audit_events (
   id uuid primary key default gen_random_uuid(), actor_user_id uuid references users(id) on delete set null, actor text not null, action text not null,
   resource_type text, resource_id text, details jsonb not null default '{}'::jsonb, created_at timestamptz not null default now()
 );
-create index if not exists users_status_idx on users(status);create index if not exists sessions_user_idx on user_sessions(user_id);create index if not exists sessions_expiry_idx on user_sessions(expires_at);create index if not exists licenses_product_idx on licenses(product_id);create index if not exists licenses_customer_idx on licenses(customer_external_id);create index if not exists licenses_status_idx on licenses(status);create index if not exists activations_license_idx on activations(license_id);create index if not exists releases_product_idx on releases(product_id);create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);create index if not exists api_keys_status_idx on api_keys(status);create index if not exists audit_created_idx on audit_events(created_at desc);
+create index if not exists users_status_idx on users(status);create index if not exists sessions_user_idx on user_sessions(user_id);create index if not exists sessions_expiry_idx on user_sessions(expires_at);create index if not exists licenses_product_idx on licenses(product_id);create index if not exists licenses_customer_idx on licenses(customer_external_id);create index if not exists licenses_status_idx on licenses(status);create index if not exists licenses_override_idx on licenses(customer_override);create index if not exists activations_license_idx on activations(license_id);create index if not exists activations_status_idx on activations(status);create index if not exists activations_seen_idx on activations(last_seen_at desc);create index if not exists releases_product_idx on releases(product_id);create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);create index if not exists api_keys_status_idx on api_keys(status);create index if not exists audit_created_idx on audit_events(created_at desc);
 create or replace function touch_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end $$;
 drop trigger if exists users_touch on users;create trigger users_touch before update on users for each row execute function touch_updated_at();drop trigger if exists products_touch on products;create trigger products_touch before update on products for each row execute function touch_updated_at();drop trigger if exists licenses_touch on licenses;create trigger licenses_touch before update on licenses for each row execute function touch_updated_at();
 alter table releases add column if not exists manifest jsonb not null default '{}'::jsonb;
@@ -64,6 +64,8 @@ alter table system_settings add column if not exists deployment_enabled boolean 
 alter table user_sessions add column if not exists user_agent text;
 alter table user_sessions add column if not exists ip_address text;
 alter table licenses add column if not exists external_reference text;
+alter table licenses add column if not exists customer_override boolean not null default false;
+alter table activations add column if not exists status text not null default 'active';
 alter table releases add column if not exists checksum text;
 alter table releases add column if not exists published_at timestamptz;
 alter table releases add column if not exists review_status text not null default 'pending';
