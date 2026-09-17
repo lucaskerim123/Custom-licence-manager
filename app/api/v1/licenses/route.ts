@@ -2,12 +2,13 @@ import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../lib/auth';
 import {db} from '../../../../lib/db';
 import {issueLicense} from '../../../../lib/core/licenses';
+import {normalizeProductSlug} from '../../../../lib/core/products';
 
 export async function GET(request:Request){
   try{
     const auth=(await integrationAuthorized(request,'license.manage'))||(await integrationAuthorized(request,'license.issue'))||(await integrationAuthorized(request,'releases.read'));
     if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
-    const url=new URL(request.url);const product=url.searchParams.get('product')?.toLowerCase();
+    const url=new URL(request.url);const product=normalizeProductSlug(url.searchParams.get('product')||'');
     const params:any[]=[];let where='where 1=1';if(product){params.push(product);where+=' and p.slug=$1';}
     const rows=(await db().query(`select l.id,l.status,l.expires_at,l.external_reference,p.slug product,p.name product_name,l.customer_external_id,l.created_at,l.license_key_last4 from licenses l join products p on p.id=l.product_id ${where} order by l.created_at desc limit 200`,params)).rows;
     return NextResponse.json({licenses:rows});
@@ -19,7 +20,7 @@ export async function POST(request:Request){
     const auth=(await integrationAuthorized(request,'license.issue'))||(await integrationAuthorized(request,'license.manage'));
     if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
     const body=await request.json().catch(()=>null);
-    const product=String(body?.product??body?.product_code??body?.productCode??'').trim().toLowerCase();
+    const product=normalizeProductSlug(String(body?.product??body?.product_code??body?.productCode??''));
     if(!product)return NextResponse.json({error:'product is required',code:'PRODUCT_REQUIRED'},{status:400});
     const p=(await db().query("select id from products where slug=$1 and status='active'",[product])).rows[0];
     if(!p)return NextResponse.json({error:'PRODUCT_NOT_FOUND',code:'PRODUCT_NOT_FOUND',product},{status:404});
