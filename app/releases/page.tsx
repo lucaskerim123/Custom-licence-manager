@@ -5,7 +5,7 @@ import { createRelease, listReleases, setReleaseReview, publishRelease, validate
 export const dynamic = 'force-dynamic';
 const roles = ['owner', 'admin', 'operator'];
 
-async function create(formData: FormData) {
+async function createUpdate(formData: FormData) {
   'use server';
   const user = await requireUser();
   if (!roles.includes(user.role)) return;
@@ -13,10 +13,9 @@ async function create(formData: FormData) {
   const version = String(formData.get('version') || '').trim();
   const artifactUrl = String(formData.get('artifact_url') || '').trim();
   if (!productId || !version || !artifactUrl) return;
-  const type = String(formData.get('release_type') || 'update') === 'base' ? 'base' : 'update';
-  const components = String(formData.get('components') || (type === 'base' ? 'base' : 'base')).split(',').map(x => x.trim()).filter(Boolean);
+  const components = String(formData.get('components') || 'base').split(',').map(x => x.trim()).filter(Boolean);
   await createRelease({
-    productId, version, artifactUrl, channel: String(formData.get('channel') || 'stable'), releaseType: type,
+    productId, version, artifactUrl, channel: String(formData.get('channel') || 'stable'), releaseType: 'update',
     sourceRepo: String(formData.get('source_repo') || '') || null,
     sourceRef: String(formData.get('source_ref') || '') || null,
     sourceSha: String(formData.get('source_sha') || '') || null,
@@ -81,7 +80,6 @@ export default async function Releases() {
     db().query("select id,slug,name from products where status='active' order by name"),
     listReleases(),
   ]);
-  const bases = releases.filter((x: any) => x.release_type === 'base');
   const updates = releases.filter((x: any) => x.release_type === 'update');
   const releaseCard = (x: any) => {
     const validation = validationSummary(x);
@@ -89,9 +87,10 @@ export default async function Releases() {
     return <div className="listrow" key={x.id}>
       <div style={{ minWidth: 0, flex: 1 }}>
         <strong>{x.product_name || x.product} {x.version}</strong>
-        <span>{x.release_type} · {x.status} · review {x.review_status} · validation {validation.status}</span>
+        <span>{x.status} · review {x.review_status} · validation {validation.status}</span>
         <small style={{ whiteSpace: 'pre-wrap' }}>{x.notes || 'No changelog.'}</small>
-        {x.manifest?.components?.length ? <small>Components: {x.manifest.components.map((c: string) => c === 'core' || c === 'orbitfs_base' ? 'base' : c).join(', ')}</small> : null}
+        {x.manifest?.components?.length ? <small>Components: {x.manifest.components.join(', ')}</small> : null}
+        {x.source_repo ? <small>Source: {x.source_repo} @ {x.source_ref || '—'} · {(x.source_sha || '').slice(0, 12)}</small> : null}
         {validation.checks.length ? <details style={{ marginTop: 8 }}><summary>Validation checks</summary><div style={{ display: 'grid', gap: 4, marginTop: 8 }}>{validation.checks.map((c: any) => <small key={c.key} style={{ color: c.ok ? 'inherit' : '#b42318' }}>{c.ok ? 'PASS' : 'FAIL'} · {c.message}</small>)}</div></details> : null}
       </div>
       <div className="actions">
@@ -102,23 +101,23 @@ export default async function Releases() {
     </div>;
   };
 
-  return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a href="/products">Products</a><a className="active" href="/releases">Releases</a><a href="/users">Users</a><a href="/settings">System Settings</a></nav></aside><main className="main">
-    <h1 className="title">OrbitFS Releases</h1>
-    <p className="muted">License Master is the release authority. A Base or Update release is validated here, its changelog is confirmed, checks are completed, then it can be approved and finally published. Billing Store receives only published releases.</p>
-    {roles.includes(user.role) && <div className="section card"><h2>New release</h2><form className="form" action={create}>
-      <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.rows.map((p: any) => <option key={p.id} value={p.id} selected={p.slug === 'orbitfs_base'}>{p.name} ({p.slug})</option>)}</select></label>
-      <label>Version<input className="input" name="version" placeholder="1.2.0" required/></label>
-      <label>Type<select className="input" name="release_type"><option value="base">Base</option><option value="update">Update</option></select></label>
-      <label>Components<input className="input" name="components" defaultValue="base" placeholder="base,mcp,apex,studio"/><small>Base releases stay simple. Updates can target base, MCP, APEX and Studio together or individually.</small></label>
+  return <div className="shell"><aside className="side"><div className="brand">License Manager</div><nav className="nav"><a href="/">Overview</a><a href="/licenses">Licenses</a><a href="/installations">Installations</a><a href="/products">Products</a><a href="/releases/base">Base Deployment</a><a className="active" href="/releases">Releases &amp; Updates</a><a href="/users">Users</a><a href="/settings">System Settings</a></nav></aside><main className="main">
+    <h1 className="title">Releases &amp; Updates</h1>
+    <p className="muted">Detailed update release management lives here. Base deployment is deliberately separate. Updates are validated, reviewed, approved and published before Billing Store can consume them.</p>
+    {roles.includes(user.role) && <div className="section card"><h2>New Update</h2><form className="form" action={createUpdate}>
+      <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.rows.map((p: any) => <option key={p.id} value={p.id}>{p.name} ({p.slug})</option>)}</select></label>
+      <label>Version<input className="input" name="version" placeholder="1.2.1" required/></label>
+      <label>Channel<input className="input" name="channel" defaultValue="stable"/></label>
+      <label>Components<input className="input" name="components" defaultValue="base" placeholder="base,mcp,apex,studio"/><small>Choose the components affected by this update.</small></label>
       <label>Artifact URL<input className="input" name="artifact_url" type="url" required/></label>
       <label>Artifact name<input className="input" name="artifact_name"/></label>
-      <label>Artifact repo<input className="input" name="artifact_repo" placeholder="lucaskerim123/V1-vercel-base"/></label>
+      <label>Artifact repo<input className="input" name="artifact_repo"/></label>
       <label>Artifact run ID<input className="input" name="artifact_run_id" inputMode="numeric"/></label>
       <label>Source repo<input className="input" name="source_repo"/></label>
       <label>Source ref<input className="input" name="source_ref"/></label>
       <label>Source commit<input className="input" name="source_sha"/></label>
       <label>SHA-256 checksum<input className="input" name="checksum"/></label>
-      <label>Title<input className="input" name="title" placeholder="OrbitFS Base 1.2.0"/></label>
+      <label>Title<input className="input" name="title" placeholder="OrbitFS MCP 1.2.1"/></label>
       <label>Description<textarea className="input" name="description" rows={2}/></label>
       <label>Changelog<textarea className="input" name="changelog" rows={6} required/></label>
       <label>Customer notes<textarea className="input" name="customer_notes" rows={3}/></label>
@@ -128,9 +127,8 @@ export default async function Releases() {
       <label>Minimum installed version<input className="input" name="minimum_version"/></label>
       <label>Rollback version<input className="input" name="rollback_version"/></label>
       <label><input type="checkbox" name="required"/> Required update</label>
-      <button className="button">Create pending release</button>
+      <button className="button">Create pending update</button>
     </form></div>}
-    <section className="section card"><h2>Base releases</h2>{bases.length ? bases.map(releaseCard) : <p className="muted">No Base releases.</p>}</section>
-    <section className="section card"><h2>Update releases</h2>{updates.length ? updates.map(releaseCard) : <p className="muted">No Update releases.</p>}</section>
+    <section className="section card"><h2>Update releases</h2>{updates.length ? updates.map(releaseCard) : <p className="muted">No Update releases yet.</p>}</section>
   </main></div>;
 }
