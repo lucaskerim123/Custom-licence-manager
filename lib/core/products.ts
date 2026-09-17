@@ -1,5 +1,7 @@
 import { db } from '../db';
 
+export function normalizeProductSlug(value:string){const slug=String(value||'').trim().toLowerCase();return slug==='orbitfs'?'orbitfs_base':slug;}
+
 export async function createProduct(input:{name:string;slug:string;description?:string|null;actorUserId?:string|null;actor?:string}){
   const result=await db().query(`insert into products(name,slug,description) values($1,$2,$3) returning *`,[input.name,input.slug,input.description??null]);
   const row=result.rows[0];
