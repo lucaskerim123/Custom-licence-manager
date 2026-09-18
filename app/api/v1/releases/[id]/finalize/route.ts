@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../../lib/auth';
-import { db } from '../../../../../../lib/db';
 import { validateRelease, setReleaseReview } from '../../../../../../lib/core/releases';
 
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){
