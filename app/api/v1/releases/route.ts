@@ -42,22 +42,31 @@ export async function POST(request: Request) {
     if (!settings?.system_enabled || !settings.release_system_enabled || (releaseType === 'base' && !settings.deployment_enabled)) return NextResponse.json({ error: 'AUTHORITY_UNAVAILABLE' }, { status: 503 });
     const p = (await pool.query("select id from products where slug=$1 and status='active'", [product])).rows[0];
     if (!p) return NextResponse.json({ error: 'PRODUCT_NOT_FOUND', product }, { status: 404 });
-    const existing = (await pool.query(`select id,status,review_status,artifact_url from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4`, [p.id, channel, version, releaseType])).rows[0];
-    if (existing) return NextResponse.json({ ok: true, duplicate: true, release: existing }, { status: 200 });
+    const existingRows = (await pool.query(`select id,status,review_status,artifact_url,checksum,source_sha,artifact_run_id,revision,archived_at from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4 order by revision desc,created_at desc`, [p.id, channel, version, releaseType])).rows;
+    const sourceSha = body.source_sha ? String(body.source_sha) : null;
+    const checksum = body.checksum ? String(body.checksum) : null;
+    const artifactRunId = body.artifact_run_id ? Number(body.artifact_run_id) : null;
+    const artifactSame = (a:any) => String(a.artifact_url||'') === String(artifactUrl||'') && String(a.checksum||'') === String(checksum||'') && String(a.source_sha||'') === String(sourceSha||'') && Number(a.artifact_run_id||0) === Number(artifactRunId||0);
+    const exact = existingRows.find(artifactSame);
+    if (exact) return NextResponse.json({ ok: true, duplicate: true, release: exact }, { status: 200 });
+    const superseded = existingRows.find((r:any)=>r.status!=='published' && !r.archived_at);
+    if (superseded) await pool.query(`update releases set archived_at=now(), archived_by=null where product_id=$1 and channel=$2 and version=$3 and release_type=$4 and status<>'published' and archived_at is null`, [p.id, channel, version, releaseType]);
+    const revision = (Number(existingRows[0]?.revision||0) || 0) + 1;
     const row = await createRelease({
       productId: p.id, channel, version, releaseType,
       sourceRepo: body.source_repo ? String(body.source_repo) : null,
       sourceRef: body.source_ref ? String(body.source_ref) : 'release',
       artifactUrl,
-      checksum: body.checksum ? String(body.checksum) : null,
+      checksum,
       notes: body.notes ? String(body.notes) : null,
       publish: false, reviewStatus: 'pending', deploymentStatus: 'not_started',
-      sourceSha: body.source_sha ? String(body.source_sha) : null,
+      sourceSha,
       artifactName: body.artifact_name ? String(body.artifact_name) : null,
       artifactRepo: body.artifact_repo ? String(body.artifact_repo) : (releaseType === 'base' ? 'lucaskerim123/V1-vercel-base' : 'lucaskerim123/V1-vercel-engine'),
-      artifactRunId: body.artifact_run_id ? Number(body.artifact_run_id) : null,
+      artifactRunId,
       vercelReady: Boolean(body.vercel_ready), supabaseReady: Boolean(body.supabase_ready),
       customerPublicationRepo: body.customer_publication_repo ? String(body.customer_publication_repo) : 'lucaskerim123/V2_Billing_Store',
+      revision, supersedesReleaseId: superseded?.id ?? null,
       manifest: body.manifest && typeof body.manifest === 'object' ? body.manifest : {},
       actor: 'orbitfs-release-api'
     });
