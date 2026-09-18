@@ -30,6 +30,13 @@ alter table if exists releases add column if not exists vercel_ready boolean not
 alter table if exists releases add column if not exists supabase_ready boolean not null default false;
 alter table if exists releases add column if not exists customer_publication_repo text;
 alter table if exists releases add column if not exists manifest jsonb not null default '{}'::jsonb;
+alter table if exists releases add column if not exists revision integer not null default 1;
+alter table if exists releases add column if not exists supersedes_release_id uuid references releases(id) on delete set null;
+alter table if exists releases add column if not exists archived_at timestamptz;
+alter table if exists releases add column if not exists archived_by uuid references users(id) on delete set null;
+alter table if exists releases drop constraint if exists releases_product_id_channel_version_release_type_key;
+create index if not exists releases_revision_idx on releases(product_id,channel,version,release_type,revision desc);
+create index if not exists releases_archived_idx on releases(archived_at,release_type,created_at desc);
 alter table if exists audit_events add column if not exists actor_user_id uuid references users(id) on delete set null;
 create index if not exists users_status_idx on users(status);create index if not exists sessions_user_idx on user_sessions(user_id);create index if not exists licenses_status_idx on licenses(status);create index if not exists licenses_customer_idx on licenses(customer_external_id);create index if not exists licenses_override_idx on licenses(customer_override);create index if not exists activations_status_idx on activations(status);create index if not exists activations_last_seen_idx on activations(last_seen_at desc);create index if not exists releases_lookup_idx on releases(product_id,channel,status,release_type);create index if not exists releases_review_idx on releases(review_status,release_type,created_at desc);
 alter table if exists activations drop constraint if exists activations_status_check;
