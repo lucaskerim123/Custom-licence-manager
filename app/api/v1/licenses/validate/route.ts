@@ -4,7 +4,7 @@ import { validateLicense } from '../../../../../lib/core/licenses';
 import { normalizeProductSlug } from '../../../../../lib/core/products';
 
 export async function POST(request: Request) {
-  if (!integrationAuthorized(request)) return NextResponse.json({ valid: false, code: 'UNAUTHORIZED' }, { status: 401 });
+  if (!(await integrationAuthorized(request))) return NextResponse.json({ valid: false, code: 'UNAUTHORIZED' }, { status: 401 });
   const body = await request.json().catch(() => null);
   const key = String(body?.license_key ?? '').trim();
   const product = normalizeProductSlug(String(body?.product ?? ''));
