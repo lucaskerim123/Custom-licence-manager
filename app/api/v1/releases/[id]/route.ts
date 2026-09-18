@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../lib/auth';
 import { db } from '../../../../../lib/db';
-import { publishRelease } from '../../../../../lib/core/releases';
+import { publishRelease, updateReleasePresentation, setReleaseReview } from '../../../../../lib/core/releases';
 
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   if(!(await integrationAuthorized(request,'releases.read')))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
@@ -12,11 +12,16 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
 export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){
   if(!(await integrationAuthorized(request,'releases.write')))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
   const {id}=await params;const body=await request.json().catch(()=>null);
-  const allowed=['channel','version','source_repo','source_ref','artifact_url','checksum','notes','artifact_name','artifact_repo','artifact_run_id','source_sha','vercel_ready','supabase_ready','deployment_status','customer_publication_repo','review_status'];
+  const presentation=['title','description','changelog','customer_notes','internal_notes','severity','required','rollout','minimum_version','rollback_version'];
+  const presentationPatch:any={}; for(const field of presentation){if(Object.prototype.hasOwnProperty.call(body??{},field))presentationPatch[field]=body[field];}
+  const hasPresentation=Object.keys(presentationPatch).length>0;
+  const allowed=['channel','version','source_repo','source_ref','artifact_url','checksum','notes','artifact_name','artifact_repo','artifact_run_id','source_sha','vercel_ready','supabase_ready','deployment_status','customer_publication_repo'];
   const updates:string[]=[];const values:any[]=[];let i=1;
-  for(const field of allowed){if(Object.prototype.hasOwnProperty.call(body??{},field)){updates.push(`${field}=$${i++}`);values.push(body[field]===null?null:body[field]);}}
-  if(!updates.length)return NextResponse.json({error:'NO_CHANGES'},{status:400});
-  values.push(id);const row=(await db().query(`update releases set ${updates.join(',')} where id=$${i} returning *`,values)).rows[0];
+  for(const field of allowed){if(Object.prototype.hasOwnProperty.call(body??{},field)){updates.push(`${field}=${i++}`);values.push(body[field]===null?null:body[field]);}}
+  let row:any=null;
+  if(updates.length){values.push(id);row=(await db().query(`update releases set ${updates.join(',')} where id=${i} returning *`,values)).rows[0];}
+  if(hasPresentation){row=await updateReleasePresentation(id,presentationPatch,null,'billing-store');}
+  if(!updates.length&&!hasPresentation)return NextResponse.json({error:'NO_CHANGES'},{status:400});
   return row?NextResponse.json({release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
 }
 
@@ -32,7 +37,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       return row?NextResponse.json({release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
     }
     if(action==='approve'){
-      const row=(await db().query(`update releases set review_status='approved',status=case when status='disabled' then 'draft' else status end where id=$1 returning *`,[id])).rows[0];
+      const row=await setReleaseReview(id,'approved',null,'integration-api');
       return row?NextResponse.json({release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
     }
     if(action==='draft'||action==='disable'||action==='withdraw'){
