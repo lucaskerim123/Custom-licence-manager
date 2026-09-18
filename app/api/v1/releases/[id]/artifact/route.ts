@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../../lib/auth';
 import { db } from '../../../../../../lib/db';
+import { gunzipSync } from 'node:zlib';
 
 export const runtime = 'nodejs';
 
@@ -62,6 +63,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const [owner, name] = match;
     const bytes = Buffer.from(await request.arrayBuffer());
     if (!bytes.length) return NextResponse.json({ error: 'EMPTY_ARTIFACT' }, { status: 400 });
+    let artifactManifest: any = null;
+    try {
+      artifactManifest = JSON.parse(gunzipSync(bytes).toString('utf8'));
+      if (!artifactManifest || typeof artifactManifest !== 'object' || !Array.isArray(artifactManifest.files)) throw new Error('INVALID_ARTIFACT_MANIFEST');
+    } catch {
+      return NextResponse.json({ error: 'INVALID_ARTIFACT_MANIFEST' }, { status: 400 });
+    }
     const tag = `orbitfs-${release.release_type}-${release.version}`;
     let ghRelease: any;
     try { ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases/tags/${encodeURIComponent(tag)}`); }
@@ -72,7 +80,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const uploadResponse = await fetch(`${uploadUrl}?name=${encodeURIComponent(filename)}`, { method: 'POST', headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${String(process.env.GITHUB_RELEASE_TOKEN || '').trim()}`, 'content-type': request.headers.get('content-type') || 'application/octet-stream', 'content-length': String(bytes.length), 'x-github-api-version': '2026-03-10', 'user-agent': 'OrbitFS-License-Master' }, body: bytes, cache: 'no-store' });
     const uploadText = await uploadResponse.text(); let asset: any = null; try { asset = uploadText ? JSON.parse(uploadText) : null; } catch {}
     if (!uploadResponse.ok) return NextResponse.json({ error: asset?.message || 'GITHUB_ARTIFACT_UPLOAD_FAILED' }, { status: 502 });
-    await db().query(`update releases set artifact_url=$1,artifact_name=$2 where id=$3`, [asset.browser_download_url ? `https://api.github.com/repos/${owner}/${name}/releases/assets/${asset.id}` : asset.url, filename, id]);
+    await db().query(`update releases set artifact_url=$1,artifact_name=$2,manifest=$3 where id=$4`, [asset.browser_download_url ? `https://api.github.com/repos/${owner}/${name}/releases/assets/${asset.id}` : asset.url, filename, JSON.stringify(artifactManifest), id]);
     const updated = (await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where r.id=$1`, [id])).rows[0];
     return NextResponse.json({ ok: true, release: updated, artifact: { name: filename, size: bytes.length, url: updated.artifact_url } }, { status: 201 });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to upload release artifact' }, { status: 503 }); }
