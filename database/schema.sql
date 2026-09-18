@@ -44,7 +44,7 @@ create table if not exists releases (
   deployment_status text not null default 'not_started' check(deployment_status in ('not_started','queued','deploying','deployed','failed')),
   source_sha text, artifact_name text, artifact_repo text, artifact_run_id bigint, vercel_ready boolean not null default false, supabase_ready boolean not null default false,
   customer_publication_repo text, notes text, manifest jsonb not null default '{}'::jsonb, created_at timestamptz not null default now(), published_at timestamptz,
-  unique(product_id, channel, version, release_type)
+  revision integer not null default 1, supersedes_release_id uuid references releases(id) on delete set null, archived_at timestamptz, archived_by uuid references users(id) on delete set null
 );
 create table if not exists api_keys (
   id uuid primary key default gen_random_uuid(), name text not null, key_hash text unique not null, key_last4 text not null,
