@@ -33,7 +33,7 @@ export async function POST(request:Request){
       const updated=(await pool.query(`update releases set source_repo=$1,source_ref=$2,source_sha=$3,artifact_name=$4,artifact_repo=$5,artifact_run_id=$6,artifact_url=$7,checksum=$8,vercel_ready=$9,supabase_ready=$10,notes=$11,manifest=$12,updated_at=now() where id=$13 returning id,status,review_status,deployment_status,artifact_url`,[
         String(body.source_repo),String(body.source_branch??'base-release'),String(body.source_sha),String(body.artifact_name),String(body.artifact_repo??'lucaskerim123/V1-vercel-base'),Number(body.artifact_run_id),String(body.artifact_url),String(body.checksum??'')||null,Boolean(body.vercel_ready),Boolean(body.supabase_ready),changelog??'Automatically received from the OrbitFS Base release pipeline.',JSON.stringify(manifest),existing.id
       ])).rows[0];
-      return NextResponse.json({ok:true,updated:true,duplicate:true,release_id:updated.id,status:updated.status,review_status:updated.review_status,deployment_status:updated.deployment_status,artifact_url:updated.artifact_url});
+      const validated=await import('../../../../../lib/core/releases').then(m=>m.validateRelease(updated.id,null,'orbitfs-base-release-validator'));return NextResponse.json({ok:true,updated:true,duplicate:true,release_id:validated.id,status:validated.status,review_status:validated.review_status,validation:validated.manifest?.validation??null,deployment_status:validated.deployment_status,artifact_url:validated.artifact_url});
     }
 
     const row=await createRelease({
@@ -44,7 +44,7 @@ export async function POST(request:Request){
       vercelReady:Boolean(body.vercel_ready),supabaseReady:Boolean(body.supabase_ready),customerPublicationRepo:String(body.customer_publication_repo??'lucaskerim123/V2_Billing_Store'),
       reviewStatus:'pending',deploymentStatus:'not_started',notes:changelog??'Automatically received from the OrbitFS Base release pipeline.',actor:'orbitfs-base-release',manifest
     });
-    const validated=await import('../../../../../lib/core/releases').then(m=>m.validateRelease(row.id,null,'orbitfs-base-release-validator')).catch(()=>row);return NextResponse.json({ok:true,release_id:validated.id,status:validated.status,review_status:validated.review_status,validation:validated.manifest?.validation??null,artifact_url:validated.artifact_url});
+    return NextResponse.json({ok:true,release_id:row.id,status:row.status,review_status:row.review_status,validation:row.manifest?.validation??null,artifact_url:row.artifact_url});
   }catch(error){
     return NextResponse.json({error:error instanceof Error?error.message:'Unable to ingest release'},{status:503});
   }
