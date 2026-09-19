@@ -89,6 +89,6 @@ alter table if exists activations add column if not exists last_operation text;
 alter table if exists activations add column if not exists deployment_count integer not null default 0;
 alter table if exists activations add column if not exists current_components jsonb not null default '{}'::jsonb;
 create index if not exists deployment_events_installation_idx on deployment_events(installation_id,created_at desc);
-create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);
+create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);create index if not exists deployment_events_activation_idx on deployment_events(activation_id,created_at desc);
 create index if not exists deployment_events_release_idx on deployment_events(release_id,created_at desc);
 create index if not exists deployment_events_deployment_idx on deployment_events(deployment_id);
