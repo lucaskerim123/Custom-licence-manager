@@ -110,7 +110,7 @@ create table if not exists deployment_events (
   activation_id uuid references activations(id) on delete set null,
   installation_id text,
   release_id uuid references releases(id) on delete set null,
-  action text not null check(action in ('deploy','update','redeploy','rollback')),
+  action text not null check(action in ('check_in','deploy','update','redeploy','rollback')),
   phase text not null check(phase in ('authorize','started','completed','failed')),
   product text,
   product_version text,
