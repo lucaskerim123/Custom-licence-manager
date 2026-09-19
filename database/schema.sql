@@ -133,7 +133,7 @@ create table if not exists deployment_events (
   created_at timestamptz not null default now()
 );
 create index if not exists deployment_events_installation_idx on deployment_events(installation_id,created_at desc);
-create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);
+create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);create index if not exists deployment_events_activation_idx on deployment_events(activation_id,created_at desc);
 create index if not exists deployment_events_release_idx on deployment_events(release_id,created_at desc);
 create index if not exists deployment_events_deployment_idx on deployment_events(deployment_id);
 alter table activations add column if not exists first_seen_at timestamptz not null default now();
