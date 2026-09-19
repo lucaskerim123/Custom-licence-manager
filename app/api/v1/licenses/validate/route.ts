@@ -21,5 +21,5 @@ export async function POST(request: Request) {
   const installationId = String(body?.installation_id ?? '').trim();
   if (!key || !product) return NextResponse.json({ valid: false, code: 'INVALID_REQUEST' }, { status: 400 });
   const result = await validateLicense({ key, productSlug: product, installationId: installationId || undefined, productVersion: body?.product_version ? String(body.product_version) : undefined, metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : undefined, requestIp: requestIp(request), userAgent: request.headers.get('user-agent'), telemetry: telemetry(body) });
-  return NextResponse.json({ valid: result.valid, code: result.code, expires_at: result.expires_at ?? null, metadata: result.metadata ?? {} }, { status: result.status });
+  return NextResponse.json({ valid: result.valid, code: result.code, expires_at: result.expires_at ?? null, metadata: result.metadata ?? {}, license_id: result.license_id ?? null }, { status: result.status });
 }
