@@ -40,7 +40,6 @@ export async function POST(request:Request){
   }
   const phase=String(body?.phase||'authorize').toLowerCase();
   if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({error:'INVALID_DEPLOYMENT_PHASE'},{status:400});
-  const licenseId=String(body?.licenseId||body?.license_id||'').trim();
   const details={action,phase,installationId:installationId||null,licenseId:licenseId||null,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
   await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor?.actor||'deployer',phase==='completed'?'deployment.completed':phase==='failed'?'deployment.failed':'deployment.authorize',release.id,JSON.stringify(details)]);
   if(licenseId&&installationId&&phase!=='authorize'){
