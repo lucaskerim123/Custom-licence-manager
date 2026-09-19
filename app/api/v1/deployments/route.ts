@@ -50,6 +50,19 @@ export async function POST(request:Request){
   if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({error:'INVALID_DEPLOYMENT_PHASE'},{status:400});
   const details={action,phase,installationId:installationId||null,licenseId:licenseId||null,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
   await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor?.actor||'deployer',phase==='completed'?'deployment.completed':phase==='failed'?'deployment.failed':'deployment.authorize',release.id,JSON.stringify(details)]);
+  if(licenseId&&installationId&&phase==='authorize'){
+    await recordInstallationCheckIn({
+      licenseId,installationId,action:action as any,phase:'authorize',product:release.product,productVersion:body?.productVersion?String(body.productVersion):release.version,
+      previousVersion:body?.previousVersion?String(body.previousVersion):null,releaseId:release.id,
+      deploymentId:details.deploymentId?String(details.deploymentId):null,deploymentUrl:details.deploymentUrl?String(details.deploymentUrl):null,
+      projectId:details.projectId?String(details.projectId):null,projectName:details.projectName?String(details.projectName):null,
+      provider:body?.provider?String(body.provider):'vercel',region:body?.region?String(body.region):null,
+      platform:body?.platform?String(body.platform):'vercel',architecture:body?.architecture?String(body.architecture):null,
+      hostname:body?.hostname?String(body.hostname):null,client:body?.client?String(body.client):'orbitfs-deployer',
+      clientVersion:body?.clientVersion?String(body.clientVersion):null,sourceIp:requestIp(request),
+      userAgent:request.headers.get('user-agent'),customerIdentity:details.customerIdentity,details:{components:body?.components&&typeof body.components==='object'?body.components:{}}
+    });
+  }
   if(licenseId&&installationId&&phase!=='authorize'){
     await recordInstallationCheckIn({
       licenseId,installationId,action:action as any,phase:phase==='completed'?'completed':'failed',
