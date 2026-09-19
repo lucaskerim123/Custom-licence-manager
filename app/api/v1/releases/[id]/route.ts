@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../lib/auth';
 import { db } from '../../../../../lib/db';
-import { publishRelease, updateReleasePresentation, setReleaseReview, archiveRelease } from '../../../../../lib/core/releases';
+import { publishRelease, updateReleasePresentation, setReleaseReview, archiveRelease, deleteRelease } from '../../../../../lib/core/releases';
 
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   if(!(await integrationAuthorized(request,'releases.read')))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
@@ -41,6 +41,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       return row?NextResponse.json({release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
     }
     if(action==='archive'||action==='restore'){const row=await archiveRelease(id,action==='archive',null,'integration-api');return row?NextResponse.json({release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});}
+    if(action==='delete'){const row=await deleteRelease(id,null,'integration-api');return row?NextResponse.json({ok:true,deleted:true,release:row}):NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});}
     if(action==='draft'||action==='disable'||action==='withdraw'){
       const status=action==='draft'?'draft':'disabled';
       const row=(await db().query(`update releases set status=$2,published_at=case when $2='draft' then null else published_at end where id=$1 returning *`,[id,status])).rows[0];
