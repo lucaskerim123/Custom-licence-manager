@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../lib/session';
 import { listReleases, setReleaseReview, validateRelease } from '../../lib/core/releases';
@@ -102,7 +103,7 @@ export default async function Releases() {
                   <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                       <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: 17 }}>{r.product_name || r.product || 'OrbitFS Update'} {r.version}</strong>
+                        <Link href={'/releases/' + r.id} className="release-title-link"><strong style={{ fontSize: 17 }}>{r.product_name || r.product || 'OrbitFS Update'} {r.version}</strong></Link>
                         <span className="badge">{r.channel}</span><span className="badge">{r.status}</span><span className="badge">review {r.review_status}</span><span className="badge">validation {v.status}</span>
                       </div>
                       <p className="muted" style={{ margin: '7px 0 0' }}>Components: {(r.manifest?.components || []).join(', ') || '—'} · {r.source_repo || '—'} @ {r.source_ref || '—'}</p>
