@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
 import {
   archiveRelease,
+  deleteRelease,
   promoteRelease,
   setReleaseReview,
   validateRelease,
@@ -151,14 +152,16 @@ export async function runReleaseAction(
 
     if (action === 'archive') {
       const row = await archiveRelease(id, true, user.id, user.email);
-
-      if (!row) {
-        return { ok: false, message: 'Release not found.' };
-      }
-
+      if (!row) return { ok: false, message: 'Release not found.' };
       refreshRelease(id);
-
       return { ok: true, message: 'Release archived.' };
+    }
+
+    if (action === 'delete') {
+      const row = await deleteRelease(id, user.id, user.email);
+      if (!row) return { ok: false, message: 'Release not found.' };
+      revalidatePath('/releases');
+      return { ok: true, message: 'Release permanently deleted.' };
     }
 
     return { ok: false, message: 'Unsupported release action.' };
