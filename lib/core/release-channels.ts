@@ -34,7 +34,7 @@ export async function saveReleaseChannel(input:{
     `insert into release_channels(channel,label,description,enabled,customer_visible,sort_order,access_mode)
      values($1,$2,$3,$4,$5,$6,$7)
      on conflict(channel) do update set label=excluded.label,description=excluded.description,enabled=excluded.enabled,
-       customer_visible=excluded.customer_visible,sort_order=excluded.sort_order,updated_at=now()
+       customer_visible=excluded.customer_visible,sort_order=excluded.sort_order,access_mode=excluded.access_mode,updated_at=now()
      returning *`,
     [channel,label,String(input.description||''),input.enabled!==false,input.customerVisible!==false,Number.isFinite(input.sortOrder)?Math.max(0,Math.round(input.sortOrder!)):100,input.accessMode??'assigned']
   )).rows[0] as ReleaseChannel;
