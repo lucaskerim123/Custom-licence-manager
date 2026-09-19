@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
 import { setReleaseReview, validateRelease, archiveRelease } from '../../../lib/core/releases';
 
-type ActionState = { ok: boolean; message: string };
+export type ReleaseCheck = { key: string; ok: boolean; message: string };\ntype ActionState = { ok: boolean; message: string; checks?: ReleaseCheck[]; checkedAt?: string };
 
 const roles = ['owner', 'admin', 'operator'];
 
@@ -22,7 +22,7 @@ export async function runReleaseAction(_prev: ActionState, formData: FormData): 
       revalidatePath('/releases');
       revalidatePath('/releases/base');
       revalidatePath('/releases/' + id);
-      return { ok: row.manifest?.validation?.status === 'passed', message: row.manifest?.validation?.status === 'passed' ? 'Validation passed. Release is ready for technical approval.' : 'Validation completed with failures. Review the failed checks below.' };
+      const validation = row.manifest?.validation || {}; return { ok: validation.status === 'passed', message: validation.status === 'passed' ? 'Validation passed. Release is ready for technical approval.' : 'Validation completed with failures. Review the failed checks below.', checks: Array.isArray(validation.checks) ? validation.checks : [], checkedAt: validation.checked_at };
     }
 
     if (action === 'approve' || action === 'reject') {
@@ -47,6 +47,6 @@ export async function runReleaseAction(_prev: ActionState, formData: FormData): 
 
     return { ok: false, message: 'Unsupported release action.' };
   } catch (error) {
-    return { ok: false, message: error instanceof Error ? error.message : 'Release operation failed.' };
+    return { ok: false, message: error instanceof Error ? error.message : 'Release operation failed.', checks: [] };
   }
 }
