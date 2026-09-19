@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { integrationAuthorized } from '../../../../lib/auth';
-import { db } from '../../../../lib/db';
+import { integrationAuthorized } from '../../../../../lib/auth';
+import { db } from '../../../../../lib/db';
 
 export async function POST(request:Request){
   if(!(await integrationAuthorized(request,'releases.write'))) return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
