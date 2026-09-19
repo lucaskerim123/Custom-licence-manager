@@ -13,7 +13,7 @@ export async function POST(request:Request){
   const c=(await db().query('select channel,enabled,access_mode from release_channels where channel=$1 limit 1',[channel])).rows[0];
   if(!c)return NextResponse.json({error:'CHANNEL_NOT_FOUND'},{status:404});
   if(!c.enabled)return NextResponse.json({error:'CHANNEL_DISABLED'},{status:409});
-  if(c.access_mode==='internal')return NextResponse.json({error:'CHANNEL_IS_INTERNAL'},{status:409});
+  if(c.access_mode==='open')return NextResponse.json({error:'OPEN_CHANNEL_DOES_NOT_REQUIRE_ASSIGNMENT'},{status:409});
   const l=(await db().query('select id from licenses where id=$1 limit 1',[licenseId])).rows[0];
   if(!l)return NextResponse.json({error:'LICENSE_NOT_FOUND'},{status:404});
   if(revoke){
