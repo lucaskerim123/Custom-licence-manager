@@ -46,7 +46,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
         <section className="card">
           <h2>Operations</h2>
           <p className="muted">Actions run through the License Manager authority and are recorded in the audit log.</p>
-          <ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} channels={channels} />
+          <ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} archived={Boolean(release.archived_at)} channels={channels} />
         </section>
         <section className="card">
           <h2>Validation</h2>
