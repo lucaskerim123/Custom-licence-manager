@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
 import { setReleaseReview, validateRelease, archiveRelease, promoteRelease } from '../../../lib/core/releases';
 
-export type ReleaseCheck = { key: string; ok: boolean; message: string };\ntype ActionState = { ok: boolean; message: string; checks?: ReleaseCheck[]; checkedAt?: string };
+export type ReleaseCheck = { key: string; ok: boolean; message: string };
+type ActionState = { ok: boolean; message: string; checks?: ReleaseCheck[]; checkedAt?: string };
 
 const roles = ['owner', 'admin', 'operator'];
 
