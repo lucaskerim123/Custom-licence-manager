@@ -22,7 +22,7 @@ export async function promoteRelease(id:string,targetChannel:string,actorUserId?
  const pool=db();
  const source=(await pool.query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id])).rows[0];
  if(!source) return null;
- if(source.status==='published'&&source.review_status!=='approved') throw new Error('Only an approved release can be promoted.');
+ if(source.review_status!=='approved'||source.manifest?.validation?.status!=='passed') throw new Error('Only a technically approved and validated release can be promoted.');
  const channel=await requireReleaseChannel(targetChannel);
  if(channel.channel===source.channel) throw new Error('Target channel is the same as the source channel.');
  const existing=(await pool.query(`select * from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4 and artifact_url=$5 and checksum=$6 and source_sha=$7 order by revision desc limit 1`,[source.product_id,channel.channel,source.version,source.release_type,source.artifact_url,source.checksum,source.source_sha])).rows[0];
