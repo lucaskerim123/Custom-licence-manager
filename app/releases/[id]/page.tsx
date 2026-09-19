@@ -25,7 +25,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
     ['Intake', true],
     ['Validate', validation.status === 'passed'],
     ['Technical approval', release.review_status === 'approved'],
-    ['Billing Store', release.status === 'published' || release.review_status === 'approved'],
+    ['Billing Store', release.status === 'published'],
   ];
   return <div className="shell">
     <SideNav active={isBase ? 'base' : 'releases'} />
@@ -61,7 +61,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
           <div><small className="muted">Artifact</small><div>{release.artifact_name || '—'}</div></div>
           <div><small className="muted">SHA-256</small><div className="mono">{release.checksum || '—'}</div></div>
           <div><small className="muted">CI run</small><div>{release.artifact_run_id || '—'}</div></div>
-          <div><small className="muted">Billing Store handoff</small><div>{release.customer_publication_repo || 'V2_Billing_Store'} · {release.review_status === 'approved' ? 'ready' : 'blocked'}</div></div>
+          <div><small className="muted">Billing Store handoff</small><div>{release.customer_publication_repo || 'V2_Billing_Store'} · {release.status === 'published' ? 'published' : release.review_status === 'approved' ? 'awaiting final publication' : 'blocked'}</div></div>
         </div><h3>Changelog</h3><div className="notice" style={{whiteSpace:'pre-wrap'}}>{release.notes || 'No changelog supplied.'}</div></section>
         <section className="card"><h2>Manifest</h2><div className="manifest-list"><div><small className="muted">Components</small><div>{(manifest.components || []).join(', ') || '—'}</div></div><div><small className="muted">Minimum version</small><div>{manifest.minimum_version || '—'}</div></div><div><small className="muted">Rollback</small><div>{manifest.rollback_version || 'Not specified'}</div></div><div><small className="muted">Revision</small><div>{release.revision}</div></div></div><details style={{marginTop:12}}><summary>Raw manifest</summary><pre className="code-panel">{JSON.stringify(manifest,null,2)}</pre></details></section>
       </div>
