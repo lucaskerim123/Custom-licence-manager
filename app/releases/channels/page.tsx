@@ -1,7 +1,7 @@
-import {requireUser} from '../../lib/session';
-import {listReleaseChannels,saveReleaseChannel} from '../../lib/core/release-channels';
-import SideNav from '../components/SideNav';
-import LiveRefresh from '../components/LiveRefresh';
+import {requireUser} from '../../../lib/session';
+import {listReleaseChannels,saveReleaseChannel} from '../../../lib/core/release-channels';
+import SideNav from '../../components/SideNav';
+import LiveRefresh from '../../components/LiveRefresh';
 export const dynamic='force-dynamic';
 const roles=['owner','admin'];
 async function save(formData:FormData){
