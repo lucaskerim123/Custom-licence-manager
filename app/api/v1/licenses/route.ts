@@ -10,7 +10,7 @@ export async function GET(request:Request){
     if(!auth)return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
     const url=new URL(request.url);const product=normalizeProductSlug(url.searchParams.get('product')||'');
     const params:any[]=[];let where='where 1=1';if(product){params.push(product);where+=' and p.slug=$1';}
-    const rows=(await db().query(`select l.id,l.status,l.expires_at,l.external_reference,p.slug product,p.name product_name,l.customer_external_id,l.created_at,l.license_key_last4 from licenses l join products p on p.id=l.product_id ${where} order by l.created_at desc limit 200`,params)).rows;
+    const rows=(await db().query(`select l.id,l.status,l.expires_at,l.external_reference,p.slug product,p.name product_name,l.customer_external_id,l.metadata,l.created_at,l.license_key_last4 from licenses l join products p on p.id=l.product_id ${where} order by l.created_at desc limit 200`,params)).rows;
     return NextResponse.json({licenses:rows});
   }catch(error){console.error('license list failed',error);return NextResponse.json({error:error instanceof Error?error.message:'LICENSE_LIST_FAILED',code:'LICENSE_LIST_FAILED'},{status:500});}
 }
