@@ -1,3 +1,4 @@
+import {db} from '../../../../lib/db';
 import {requireUser} from '../../../../lib/session';
 import SideNav from '../../../components/SideNav';
 import PageHeader from '../../../components/PageHeader';
