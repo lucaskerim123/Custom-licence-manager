@@ -31,8 +31,7 @@ export async function POST(request:Request){
     if(channel!=='stable'){
       const policy=(await db().query('select access_mode,enabled from release_channels where channel=$1 limit 1',[channel])).rows[0];
       if(!policy?.enabled)return NextResponse.json({error:'RELEASE_CHANNEL_DISABLED'},{status:409});
-      if(policy.access_mode==='internal')return NextResponse.json({error:'RELEASE_CHANNEL_INTERNAL'},{status:403});
-      if(policy.access_mode==='assigned'){
+      if(policy.access_mode==='closed'){
         const access=(await db().query('select 1 from release_channel_access where license_id=$1 and channel=$2 and (expires_at is null or expires_at>now()) limit 1',[licenseId,channel])).rows[0];
         if(!access)return NextResponse.json({error:'LICENSE_CHANNEL_ACCESS_DENIED'},{status:403});
       }
