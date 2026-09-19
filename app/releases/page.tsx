@@ -1,25 +1,10 @@
-import {requireUser} from '../../lib/session';
-import {listReleases,setReleaseReview,publishRelease,validateRelease} from '../../lib/core/releases';
+import { revalidatePath } from 'next/cache';
+import { requireUser } from '../../lib/session';
+import { listReleases, setReleaseReview, validateRelease } from '../../lib/core/releases';
 import SideNav from '../components/SideNav';
 import LiveRefresh from '../components/LiveRefresh';
 export const dynamic='force-dynamic';
 const roles=['owner','admin','operator'];
 async function validate(formData:FormData){'use server';const u=await requireUser();if(!roles.includes(u.role))return;const id=String(formData.get('id')||'');if(id)await validateRelease(id,u.id,u.email);}
 async function review(formData:FormData){'use server';const u=await requireUser();if(!roles.includes(u.role))return;const id=String(formData.get('id')||''),decision=String(formData.get('decision')||'');if(id&&(decision==='approved'||decision==='rejected'))await setReleaseReview(id,decision,u.id,u.email);}
-async function publish(formData:FormData){'use server';const u=await requireUser();if(!['owner','admin'].includes(u.role))return;const id=String(formData.get('id')||'');if(id)await publishRelease(id,u.id,u.email);}
-function vSummary(r:any){const v=r.manifest?.validation;return{status:v?.status||'not run',checks:Array.isArray(v?.checks)?v.checks:[]}}
-export default async function Releases(){
- const user=await requireUser(),releases=(await listReleases()).filter((r:any)=>r.release_type==='update');
- const counts={pending:releases.filter((r:any)=>r.review_status==='pending').length,approved:releases.filter((r:any)=>r.review_status==='approved'&&r.status!=='published').length,published:releases.filter((r:any)=>r.status==='published').length};
- return <div className="shell"><SideNav active="releases"/><main className="main">
-  <div className="row" style={{justifyContent:'space-between',alignItems:'flex-start',gap:18}}><div><div className="muted" style={{textTransform:'uppercase',letterSpacing:'.08em'}}>Release Authority</div><h1 className="title">Release Updates</h1><p className="muted">The Developer Panel starts the Engine builder. This queue is for technical validation/approval before Billing Store performs the customer-facing final review.</p></div><div style={{display:'flex',gap:8}}><LiveRefresh/><span className="badge">ENGINE UPDATES</span></div></div>
-  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:11,margin:'14px 0'}}>{[['Pending',counts.pending],['Technically approved',counts.approved],['Published',counts.published]].map(([label,n])=><section key={String(label)} className="card"><div className="muted">{label}</div><strong style={{fontSize:27}}>{n}</strong></section>)}</div>
-  <section className="section card"><div className="row" style={{justifyContent:'space-between',alignItems:'center'}}><div><h2>Incoming update candidates</h2><p className="muted">New candidates arrive from V1-vercel-engine. Manual candidate creation is intentionally removed from this authority UI.</p></div></div>
-   {releases.length?<div style={{display:'grid',gap:10,marginTop:15}}>{releases.map((r:any)=>{const v=vSummary(r);return <article key={r.id} style={{border:'1px solid #252d3b',borderRadius:13,padding:15,background:'#0a0f17'}}>
-     <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}><div><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong style={{fontSize:16}}>{r.product_name||r.product} {r.version}</strong><span className="badge">{r.channel}</span><span className="badge">{r.status}</span><span className="badge">review {r.review_status}</span><span className="badge">validation {v.status}</span></div><p className="muted" style={{marginTop:6}}>Components: {(r.manifest?.components||[]).join(', ')||'—'} · Source {r.source_repo||'—'} @ {r.source_ref||'—'}</p></div><div className="actions">{r.status!=='published'&&<form action={validate}><input type="hidden" name="id" value={r.id}/><button className="button">Validate / rescan</button></form>}{r.review_status==='pending'&&v.status==='passed'&&<form action={review}><input type="hidden" name="id" value={r.id}/><input type="hidden" name="decision" value="approved"/><button className="button">Technical approve</button></form>}{r.review_status==='pending'&&<form action={review}><input type="hidden" name="id" value={r.id}/><input type="hidden" name="decision" value="rejected"/><button className="button">Reject</button></form>}{r.review_status==='approved'&&r.status!=='published'&&<form action={publish}><input type="hidden" name="id" value={r.id}/><button className="button">Publish</button></form>}</div></div>
-     <details style={{marginTop:10}}><summary>Release details</summary><div style={{display:'grid',gap:4,marginTop:9}}><small>Commit: {r.source_sha||'—'}</small><small>Artifact: {r.artifact_name||'—'} · CI run {r.artifact_run_id||'—'}</small><small style={{whiteSpace:'pre-wrap'}}>Changelog: {r.notes||'—'}</small></div></details>
-     {v.checks.length>0&&<details style={{marginTop:7}}><summary>Validation checks</summary><div style={{display:'grid',gap:4,marginTop:8}}>{v.checks.map((c:any)=><small key={c.key}>{c.ok?'PASS':'FAIL'} · {c.message}</small>)}</div></details>}
-   </article>})}</div>:<p className="muted" style={{marginTop:15}}>No Engine update candidates yet.</p>}
-  </section>
- </main></div>;
-}
+
