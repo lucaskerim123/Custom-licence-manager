@@ -5,7 +5,7 @@ import { requireReleaseChannel } from './release-channels';
 
 const ALLOWED_UPDATE_COMPONENTS = new Set(['base', 'mcp', 'apex', 'studio', 'orbitfs_base', 'orbitfs_mcp', 'orbitfs_apex', 'orbitfs_studio', 'core']);
 const MAX_ARTIFACT_BYTES = 75 * 1024 * 1024;
-const FORBIDDEN_PATHS = /(^|\/)(\.env(?:\.|$)|\.git(?:\/|$)|node_modules(?:\/|$)|\.vercel(?:\/|$))/i;
+const FORBIDDEN_PATHS = /(^|\\/)(\\.env(?:$|\\.(?!example$))|\\.git(?:\\/|$)|node_modules(?:\\/|$)|\\.vercel(?:\\/|$))/i;
 
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
 function validationManifest(row: any, checks: any[], status: 'passed' | 'failed') { return { ...(row.manifest || {}), validation: { status, checked_at: new Date().toISOString(), checks } }; }
