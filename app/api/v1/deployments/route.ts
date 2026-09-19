@@ -1,6 +1,9 @@
 import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../lib/auth';
 import {db} from '../../../../lib/db';
+import {recordInstallationCheckIn} from '../../../../lib/core/licenses';
+
+function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
 
 export async function GET(request:Request){
   if(!(await integrationAuthorized(request,'deployment.read')))return NextResponse.json({error:'UNAUTHORIZED'},{status:401});
@@ -43,7 +46,21 @@ export async function POST(request:Request){
   const details={action,phase,installationId:installationId||null,licenseId:licenseId||null,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
   await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor?.actor||'deployer',phase==='completed'?'deployment.completed':phase==='failed'?'deployment.failed':'deployment.authorize',release.id,JSON.stringify(details)]);
   if(licenseId&&installationId&&phase!=='authorize'){
-    await db().query(`update activations set last_seen_at=now(),product_version=coalesce($3,product_version),metadata=coalesce(metadata,'{}'::jsonb)||$4::jsonb where license_id=$1 and installation_id=$2`,[licenseId,installationId,body?.productVersion?String(body.productVersion):null,JSON.stringify({lastDeploymentAt:new Date().toISOString(),lastDeploymentId:details.deploymentId,lastDeploymentUrl:details.deploymentUrl,lastDeploymentStatus:phase,projectId:details.projectId,projectName:details.projectName,customerIdentity:details.customerIdentity})]);
+    await recordInstallationCheckIn({
+      licenseId,installationId,action:action as any,phase:phase==='completed'?'completed':'failed',
+      product:release.product,productVersion:body?.productVersion?String(body.productVersion):null,
+      previousVersion:body?.previousVersion?String(body.previousVersion):null,releaseId:release.id,
+      deploymentId:details.deploymentId?String(details.deploymentId):null,deploymentUrl:details.deploymentUrl?String(details.deploymentUrl):null,
+      projectId:details.projectId?String(details.projectId):null,projectName:details.projectName?String(details.projectName):null,
+      provider:body?.provider?String(body.provider):'vercel',region:body?.region?String(body.region):null,
+      platform:body?.platform?String(body.platform):'vercel',architecture:body?.architecture?String(body.architecture):null,
+      hostname:body?.hostname?String(body.hostname):null,client:body?.client?String(body.client):'orbitfs-deployer',
+      clientVersion:body?.clientVersion?String(body.clientVersion):null,sourceIp:requestIp(request),
+      userAgent:request.headers.get('user-agent'),customerIdentity:details.customerIdentity,details:{
+        projectId:details.projectId,projectName:details.projectName,components:body?.components&&typeof body.components==='object'?body.components:{},
+        deploymentStatus:phase,requestActor:actor?.actor||'deployer'
+      }
+    });
   }
   return NextResponse.json({ok:true,authorized:phase==='authorize',recorded:phase!=='authorize',release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:phase==='authorize'?'customer-deployer':undefined});
 }
