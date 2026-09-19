@@ -1,6 +1,30 @@
+import Link from 'next/link';
 import { db } from '../lib/db';
 import { requireUser } from '../lib/session';
 import SideNav from './components/SideNav';
-export const dynamic = 'force-dynamic';
-async function stats(){const pool=db();const [licenses,products,releases,settings,users]=await Promise.all([pool.query("select count(*)::int as count from licenses"),pool.query("select count(*)::int as count from products where status <> 'archived'"),pool.query("select count(*)::int as count from releases where status='published'"),pool.query("select system_enabled,licensing_enabled,maintenance_mode,release_system_enabled,deployment_enabled from system_settings where id=true"),pool.query("select count(*)::int as count from users where status='active'")]);return {licenses:licenses.rows[0].count,products:products.rows[0].count,releases:releases.rows[0].count,users:users.rows[0].count,settings:settings.rows[0]};}
-export default async function Home(){await requireUser();const s=await stats();const online=Boolean(s.settings?.system_enabled);return <div className="shell"><SideNav active="overview"/><main className="main"><div className="top"><div><h1 className="title">Control Plane</h1><div className="muted">Independent authority for licensing, validation, base deployment and releases.</div></div><span className={`badge ${online?'ok':'off'}`}>{online?'External Authority Online':'External Authority Offline'}</span></div><div className="grid"><div className="card"><div className="muted">Licenses</div><div className="metric">{s.licenses}</div></div><div className="card"><div className="muted">Products</div><div className="metric">{s.products}</div></div><div className="card"><div className="muted">Published releases</div><div className="metric">{s.releases}</div></div><div className="card"><div className="muted">Local users</div><div className="metric">{s.users}</div></div></div><div className="section"><h2>Authority boundary</h2><div className="notice">The License Manager owns its users, database, settings, products, licenses, validation decisions, activations, deployment metadata and releases. Billing Store and installed products are clients of the external API; they are not dependencies of this control plane.</div></div></main></div>}
+import LiveRefresh from './components/LiveRefresh';
+export const dynamic='force-dynamic';
+async function stats(){
+ const pool=db();
+ const [licenses,products,releases,settings,users,pending,failed,activations]=await Promise.all([
+  pool.query("select count(*)::int as count from licenses"),
+  pool.query("select count(*)::int as count from products where status <> 'archived'"),
+  pool.query("select count(*)::int as count from releases where status='published'"),
+  pool.query("select system_enabled,licensing_enabled,maintenance_mode,release_system_enabled,deployment_enabled from system_settings where id=true"),
+  pool.query("select count(*)::int as count from users where status='active'"),
+  pool.query("select count(*)::int as count from releases where status <> 'published' and review_status='pending'"),
+  pool.query("select count(*)::int as count from releases where coalesce((manifest->'validation'->>'status'),'not_run')='failed'"),
+  pool.query("select count(*)::int as count from activations where status='active'")
+ ]);
+ return {licenses:licenses.rows[0].count,products:products.rows[0].count,releases:releases.rows[0].count,users:users.rows[0].count,settings:settings.rows[0],pending:pending.rows[0].count,failed:failed.rows[0].count,activations:activations.rows[0].count};
+}
+export default async function Home(){
+ await requireUser(); const s=await stats(); const online=Boolean(s.settings?.system_enabled);
+ const switches=[['Licensing',s.settings?.licensing_enabled],['Release system',s.settings?.release_system_enabled],['Deployment',s.settings?.deployment_enabled]];
+ return <div className="shell"><SideNav active="overview"/><main className="main">
+  <div className="top"><div><div className="muted" style={{textTransform:'uppercase',letterSpacing:'.08em',fontSize:11,fontWeight:800}}>Authority Control Plane</div><h1 className="title">Operations Overview</h1><div className="muted">One place to control licensing, releases, validation and deployment authority.</div></div><div className="actions"><LiveRefresh/><span className={`badge ${online?'ok':'off'}`}>{online?'Authority online':'Authority offline'}</span></div></div>
+  <div className="grid"><div className="card"><div className="muted">Licenses</div><div className="metric">{s.licenses}</div><Link href="/licenses">Manage licensing →</Link></div><div className="card"><div className="muted">Active installations</div><div className="metric">{s.activations}</div><Link href="/installations">Inspect installations →</Link></div><div className="card"><div className="muted">Release candidates</div><div className="metric">{s.pending}</div><Link href="/releases">Open release queue →</Link></div><div className="card"><div className="muted">Validation failures</div><div className="metric">{s.failed}</div><Link href="/releases">Review failures →</Link></div></div>
+  <div className="detail-grid section"><section className="card"><h2>System posture</h2><div style={{display:'grid',gap:8}}>{switches.map(([label,value])=><div key={String(label)} className="notice" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}><span>{String(label)}</span><span className={`badge ${value?'ok':'off'}`}>{value?'Enabled':'Disabled'}</span></div>)}</div><div className="notice" style={{marginTop:10}}><strong>Authority boundary</strong><div className="muted" style={{marginTop:4}}>License Manager owns licenses, validation decisions, activations, release state and deployment metadata. Billing Store remains the customer commerce/publication layer.</div></div></section>
+  <section className="card"><h2>Operator shortcuts</h2><div className="actions" style={{display:'grid',gridTemplateColumns:'1fr 1fr'}}><Link className="button" href="/releases/base">Base Deployment</Link><Link className="button" href="/releases">Release Updates</Link><Link className="button secondary" href="/licenses">Licensing</Link><Link className="button secondary" href="/settings">System Settings</Link></div><p className="muted" style={{marginTop:14,fontSize:12}}>Technical approval does not publish to customers. Approved candidates remain ready for the Billing Store final publication gate.</p></section></div>
+ </main></div>;
+}
