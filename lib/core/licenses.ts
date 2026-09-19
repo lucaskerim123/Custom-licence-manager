@@ -60,7 +60,7 @@ export async function recordInstallationCheckIn(input:{
   licenseId:string;
   installationId:string;
   action:'check_in'|'deploy'|'update'|'redeploy'|'rollback';
-  phase:'started'|'completed'|'failed';
+  phase:'authorize'|'started'|'completed'|'failed';
   product:string;
   productVersion?:string|null;
   previousVersion?:string|null;
