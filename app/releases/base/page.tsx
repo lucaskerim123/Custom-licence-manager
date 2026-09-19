@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
 import { listReleases, setReleaseReview, validateRelease } from '../../../lib/core/releases';
@@ -110,7 +111,7 @@ export default async function BaseDeployment() {
                   <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                       <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <strong style={{ fontSize: 17 }}>OrbitFS Base {r.version}</strong>
+                        <Link href={'/releases/' + r.id} className="release-title-link"><strong style={{ fontSize: 17 }}>OrbitFS Base {r.version}</strong></Link>
                         <span className="badge">{r.channel}</span>
                         <span className="badge">{r.status}</span>
                         <span className="badge">review {r.review_status}</span>
