@@ -1,17 +1,40 @@
-name: CI
+name: License Master CI
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: license-master-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  production-gate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run typecheck
-      - run: npm run build
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Production gate passed
+        run: echo "CI production gate passed: typecheck and production build are green."
