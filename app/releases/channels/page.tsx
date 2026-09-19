@@ -19,7 +19,7 @@ export default async function ReleaseChannels(){
    <div style={{display:'flex',gap:8,alignItems:'center'}}><LiveRefresh/><span className="badge">MASTER</span></div>
   </div>
   <section className="section card"><h2>Configured channels</h2><p className="muted">Stable, Beta and Development are installed by the release-system schema. Custom channels can be added when needed.</p>
-   <div style={{display:'grid',gap:11,marginTop:16}}>{channels.map((c:any)=><article key={c.id} style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:18,padding:15,border:'1px solid #252d3b',borderRadius:13,background:'#0a0f17'}}>
+   <div style={{display:'grid',gap:11,marginTop:16}}>{channels.map((c:any)=><article key={c.id} className="release-item" style={{display:'grid',gridTemplateColumns:'minmax(0,1fr) auto',gap:18}}>
     <div><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong>{c.label}</strong><span className="badge">{c.channel}</span><span className="badge">{c.enabled?'Enabled':'Disabled'}</span><span className="badge">{c.customer_visible?'Customer visible':'Internal'}</span></div><p className="muted" style={{marginTop:7}}>{c.description||'No description.'}</p></div>
     {roles.includes(user.role)&&<form action={save} style={{display:'grid',gridTemplateColumns:'160px 110px',gap:8,alignItems:'end',minWidth:285}}>
       <input type="hidden" name="channel" value={c.channel}/><input className="input" name="label" value={c.label} readOnly/>
