@@ -51,7 +51,9 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
   const current=(await pool.query(`select l.id,l.expires_at,l.customer_external_id,l.customer_override,l.metadata,p.id product_id from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
   if(!current)throw new Error('License not found');
   const replacement=await issueLicense({productId:current.product_id,customerExternalId:current.customer_external_id,customerOverride:current.customer_override,externalReference:`rotation:${id}:${Date.now()}`,expiresAt:current.expires_at?new Date(current.expires_at):null,metadata:{...(current.metadata||{}),rotated_from:id},actorUserId,actor});
+  await pool.query('update activations set license_id=$1 where license_id=$2 and status<>$3',[replacement.id,id,'terminated']);
   await setLicenseStatus(id,'revoked',actorUserId,actor);
+  await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.rotate','license',$3,$4)`,[actorUserId??null,actor??'system',replacement.id,JSON.stringify({previous_license_id:id,migrated_installations:true})]);
   return replacement;
 }
 
