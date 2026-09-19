@@ -35,7 +35,11 @@ create table if not exists licenses (
 );
 create table if not exists activations (
   id uuid primary key default gen_random_uuid(), license_id uuid not null references licenses(id) on delete cascade, installation_id text not null,
-  product_version text, status text not null default 'active' check(status in ('active','locked','terminated')), last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb, unique(license_id, installation_id)
+  product_version text, status text not null default 'active' check(status in ('active','locked','terminated')), last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb,
+  first_seen_at timestamptz not null default now(), last_ip text, last_user_agent text, last_hostname text, last_platform text, last_architecture text,
+  last_client text, last_client_version text, last_provider text, last_region text, last_deployment_id text, last_deployment_url text,
+  last_deployment_status text, last_operation text, deployment_count integer not null default 0, current_components jsonb not null default '{}'::jsonb,
+  unique(license_id, installation_id)
 );
 create table if not exists releases (
   id uuid primary key default gen_random_uuid(), product_id uuid not null references products(id), channel text not null default 'stable' check(channel ~ '^[a-z0-9][a-z0-9._-]*$'), version text not null,
@@ -99,3 +103,52 @@ on conflict(channel) do nothing;
 alter table releases drop constraint if exists releases_channel_fkey;
 alter table releases add constraint releases_channel_fkey foreign key(channel) references release_channels(channel);
 create index if not exists release_channels_enabled_idx on release_channels(enabled,customer_visible,sort_order);
+
+create table if not exists deployment_events (
+  id uuid primary key default gen_random_uuid(),
+  license_id uuid references licenses(id) on delete set null,
+  activation_id uuid references activations(id) on delete set null,
+  installation_id text,
+  release_id uuid references releases(id) on delete set null,
+  action text not null check(action in ('deploy','update','redeploy','rollback')),
+  phase text not null check(phase in ('authorize','started','completed','failed')),
+  product text,
+  product_version text,
+  previous_version text,
+  deployment_id text,
+  deployment_url text,
+  project_id text,
+  project_name text,
+  provider text,
+  region text,
+  platform text,
+  architecture text,
+  hostname text,
+  client text,
+  client_version text,
+  source_ip text,
+  user_agent text,
+  customer_identity jsonb not null default '{}'::jsonb,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists deployment_events_installation_idx on deployment_events(installation_id,created_at desc);
+create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);
+create index if not exists deployment_events_release_idx on deployment_events(release_id,created_at desc);
+create index if not exists deployment_events_deployment_idx on deployment_events(deployment_id);
+alter table activations add column if not exists first_seen_at timestamptz not null default now();
+alter table activations add column if not exists last_ip text;
+alter table activations add column if not exists last_user_agent text;
+alter table activations add column if not exists last_hostname text;
+alter table activations add column if not exists last_platform text;
+alter table activations add column if not exists last_architecture text;
+alter table activations add column if not exists last_client text;
+alter table activations add column if not exists last_client_version text;
+alter table activations add column if not exists last_provider text;
+alter table activations add column if not exists last_region text;
+alter table activations add column if not exists last_deployment_id text;
+alter table activations add column if not exists last_deployment_url text;
+alter table activations add column if not exists last_deployment_status text;
+alter table activations add column if not exists last_operation text;
+alter table activations add column if not exists deployment_count integer not null default 0;
+alter table activations add column if not exists current_components jsonb not null default '{}'::jsonb;
