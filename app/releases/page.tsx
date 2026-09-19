@@ -81,7 +81,7 @@ export default async function Releases() {
         <div className="muted" style={{ textTransform: 'uppercase', letterSpacing: '.07em', fontSize: 12 }}>Pipeline</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginTop: 12 }}>
           {['Detect changes', 'Build package', 'License intake', 'Technical approve', 'Billing publish'].map((step, i) =>
-            <div key={step} style={{ border: '1px solid #252d3b', borderRadius: 10, padding: 11 }}>
+            <div key={step} className="release-pipeline-step">
               <small className="muted">0{i + 1}</small><strong style={{ display: 'block', marginTop: 4 }}>{step}</strong>
             </div>
           )}
@@ -98,7 +98,7 @@ export default async function Releases() {
             <div style={{ display: 'grid', gap: 11, marginTop: 16 }}>
               {releases.map((r: any) => {
                 const v = validationSummary(r);
-                return <article key={r.id} style={{ border: '1px solid #252d3b', borderRadius: 13, padding: 16, background: '#0a0f17' }}>
+                return <article key={r.id} className="release-item">
                   <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
                       <div style={{ display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' }}>
