@@ -38,6 +38,14 @@ export async function POST(request:Request){
       }
     }
   }
-  await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'deployment.authorize','release',$3,$4)`,[null,actor?.actor||'deployer',release.id,JSON.stringify({action,installationId:installationId||null,releaseVersion:release.version,product:release.product})]);
+  const phase=String(body?.phase||'authorize').toLowerCase();
+  if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({error:'INVALID_DEPLOYMENT_PHASE'},{status:400});
+  const licenseId=String(body?.licenseId||body?.license_id||'').trim();
+  const details={action,phase,installationId:installationId||null,licenseId:licenseId||null,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
+  await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor?.actor||'deployer',phase==='completed'?'deployment.completed':phase==='failed'?'deployment.failed':'deployment.authorize',release.id,JSON.stringify(details)]);
+  if(licenseId&&installationId&&phase!=='authorize'){
+    await db().query(`update activations set last_seen_at=now(),product_version=coalesce($3,product_version),metadata=coalesce(metadata,'{}'::jsonb)||$4::jsonb where license_id=$1 and installation_id=$2`,[licenseId,installationId,body?.productVersion?String(body.productVersion):null,JSON.stringify({lastDeploymentAt:new Date().toISOString(),lastDeploymentId:details.deploymentId,lastDeploymentUrl:details.deploymentUrl,lastDeploymentStatus:phase,projectId:details.projectId,projectName:details.projectName,customerIdentity:details.customerIdentity})]);
+  }
+  return NextResponse.json({ok:true,authorized:phase==='authorize',recorded:phase!=='authorize',release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:phase==='authorize'?'customer-deployer':undefined});
   return NextResponse.json({ok:true,authorized:true,release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:'customer-deployer'});
 }
