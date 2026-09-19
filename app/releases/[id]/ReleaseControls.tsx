@@ -17,12 +17,14 @@ export default function ReleaseControls({
   reviewStatus,
   validationStatus,
   published,
+  archived,
   channels,
 }: {
   id: string;
   reviewStatus: string;
   validationStatus: string;
   published: boolean;
+  archived: boolean;
   channels: string[];
 }) {
   const [state, action, pending] = useActionState(runReleaseAction, initial);
@@ -69,12 +71,22 @@ export default function ReleaseControls({
         </form>
       )}
 
-      {!published && (
+      {!archived && (
         <form action={action}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="action" value="archive" />
           <button className="button secondary" disabled={pending}>
             Archive
+          </button>
+        </form>
+      )}
+
+      {archived && (
+        <form action={action} onSubmit={(e) => { if (!confirm('Permanently delete this archived release? This cannot be undone.')) e.preventDefault(); }}>
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="action" value="delete" />
+          <button className="button danger" disabled={pending}>
+            Permanently delete
           </button>
         </form>
       )}
