@@ -1,7 +1,7 @@
 import {db} from '../../../../lib/db';
-import {requireUser} from '../../../lib/session';
+import {requireUser} from '../../../../lib/session';
 import SideNav from '../../../components/SideNav';
-import PageHeader from '../../components/PageHeader';
+import PageHeader from '../../../components/PageHeader';
 export const dynamic='force-dynamic';
 const roles=['owner','admin'];
 async function save(formData:FormData){
