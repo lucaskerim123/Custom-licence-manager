@@ -72,8 +72,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const tag = `orbitfs-${release.release_type}-${release.version}`;
     let ghRelease: any;
-    try { ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases/tags/${encodeURIComponent(tag)}`); }
-    catch { ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tag_name: tag, name: `OrbitFS ${release.release_type} ${release.version}`, draft: false, prerelease: false }) }); }
+    try {
+      ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases/tags/${encodeURIComponent(tag)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Not Found|404/i.test(message)) throw error;
+      ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tag_name: tag, name: `OrbitFS ${release.release_type} ${release.version}`, draft: false, prerelease: false }) });
+    }
     const filename = String(request.headers.get('x-artifact-name') || release.artifact_name || `orbitfs-${release.release_type}-${release.version}.bin`).replace(/[^A-Za-z0-9._-]/g, '_');
     const uploadUrl = String(ghRelease.upload_url || '').replace(/\{\?name,label\}$/, '');
     if (!uploadUrl) throw new Error('GITHUB_UPLOAD_URL_MISSING');
