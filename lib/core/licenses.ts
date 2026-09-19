@@ -85,7 +85,12 @@ export async function recordInstallationCheckIn(input:{
   const license=(await pool.query('select id,status,expires_at from licenses where id=$1 limit 1',[input.licenseId])).rows[0];
   if(!license) throw Object.assign(new Error('License not found'),{code:'LICENSE_NOT_FOUND',status:404});
   if(license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())) throw Object.assign(new Error('License is not active'),{code:'LICENSE_NOT_ELIGIBLE',status:403});
-  const activation=(await pool.query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[input.licenseId,input.installationId])).rows[0];
+  let activation=(await pool.query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[input.licenseId,input.installationId])).rows[0];
+  if(!activation && input.action==='deploy'){
+    activation=(await pool.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11) returning id,status`,[
+      input.licenseId,input.installationId,input.productVersion??null,JSON.stringify(input.details??{}),input.sourceIp??null,input.userAgent??null,input.client??null,input.clientVersion??null,input.provider??null,input.region??null,JSON.stringify((input.details&&typeof input.details==='object'&&input.details.components&&typeof input.details.components==='object')?input.details.components:{})
+    ])).rows[0];
+  }
   if(!activation) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
   if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
   const details=input.details&&typeof input.details==='object'?input.details:{};
