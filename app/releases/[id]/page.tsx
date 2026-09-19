@@ -16,6 +16,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
   const validation = release.manifest?.validation || {};
   const checks = Array.isArray(validation.checks) ? validation.checks : [];
   const manifest = release.manifest || {};
+  const channels = (await db().query(`select channel from release_channels where enabled=true and channel<>$1 order by sort_order,channel`, [release.channel])).rows.map((x:any)=>x.channel);
   const passed = checks.filter((c:any) => c.ok).length;
   const failed = checks.length - passed;
   const audit = (await db().query(`select id,actor,action,details,created_at from audit_events where resource_type='release' and resource_id=$1 order by created_at desc limit 25`, [id])).rows;
@@ -45,7 +46,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
         <section className="card">
           <h2>Operations</h2>
           <p className="muted">Actions run through the License Manager authority and are recorded in the audit log.</p>
-          <ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} />
+          <ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} channels={channels} />
         </section>
         <section className="card">
           <h2>Validation</h2>
