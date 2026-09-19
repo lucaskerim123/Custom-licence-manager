@@ -21,7 +21,7 @@ export async function issueLicense(input: { productId: string; customerExternalI
   return {...license,key,alreadyIssued:false};
 }
 
-export async function validateLicense(input:{key:string;productSlug:string;installationId?:string;productVersion?:string;metadata?:Record<string,unknown>}){
+export async function validateLicense(input:{key:string;productSlug:string;installationId?:string;productVersion?:string;metadata?:Record<string,unknown>;requestIp?:string|null;userAgent?:string|null;telemetry?:Record<string,unknown>}){
   const pool=db();const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
   if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode)return{valid:false,code:'AUTHORITY_UNAVAILABLE' as const,status:503};
   const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug product,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug=$2 limit 1`,[hashKey(input.key),input.productSlug]);
@@ -32,7 +32,10 @@ export async function validateLicense(input:{key:string;productSlug:string;insta
   if(validLicense&&input.installationId){
     const existing=(await pool.query(`select status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
     installationValid=!existing||existing.status==='active';
-    if(installationValid) await pool.query(`insert into activations(license_id,installation_id,product_version,status,metadata) values($1,$2,$3,'active',$4) on conflict(license_id,installation_id) do update set last_seen_at=now(),product_version=excluded.product_version,metadata=excluded.metadata`,[license.id,input.installationId,input.productVersion??null,JSON.stringify(input.metadata??{})]);
+    if(installationValid){
+      const t=input.telemetry&&typeof input.telemetry==='object'?input.telemetry:{};
+      await pool.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_hostname,last_platform,last_architecture,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict(license_id,installation_id) do update set last_seen_at=now(),product_version=coalesce(excluded.product_version,activations.product_version),metadata=coalesce(activations.metadata,'{}'::jsonb)||excluded.metadata,last_ip=coalesce(excluded.last_ip,activations.last_ip),last_user_agent=coalesce(excluded.last_user_agent,activations.last_user_agent),last_hostname=coalesce(excluded.last_hostname,activations.last_hostname),last_platform=coalesce(excluded.last_platform,activations.last_platform),last_architecture=coalesce(excluded.last_architecture,activations.last_architecture),last_client=coalesce(excluded.last_client,activations.last_client),last_client_version=coalesce(excluded.last_client_version,activations.last_client_version),last_provider=coalesce(excluded.last_provider,activations.last_provider),last_region=coalesce(excluded.last_region,activations.last_region),current_components=case when excluded.current_components<>'{}'::jsonb then excluded.current_components else activations.current_components end`,[license.id,input.installationId,input.productVersion??null,JSON.stringify(input.metadata??{}),input.requestIp??null,input.userAgent??null,t.hostname?t.hostname:null,t.platform?t.platform:null,t.architecture?t.architecture:null,t.client?t.client:null,t.clientVersion?t.clientVersion:null,t.provider?t.provider:null,t.region?t.region:null,t.components&&typeof t.components==='object'?JSON.stringify(t.components):'{}']);
+    }
   }
   const valid=validLicense&&installationValid;
   const code=valid?'LICENSE_VALID':!installationValid?'INSTALLATION_LOCKED_OR_TERMINATED':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':`LICENSE_${String(license.status).toUpperCase()}`;
@@ -50,4 +53,46 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
   const replacement=await issueLicense({productId:current.product_id,customerExternalId:current.customer_external_id,customerOverride:current.customer_override,externalReference:`rotation:${id}:${Date.now()}`,expiresAt:current.expires_at?new Date(current.expires_at):null,metadata:{...(current.metadata||{}),rotated_from:id},actorUserId,actor});
   await setLicenseStatus(id,'revoked',actorUserId,actor);
   return replacement;
+}
+
+
+export async function recordInstallationCheckIn(input:{
+  licenseId:string;
+  installationId:string;
+  action:'check_in'|'deploy'|'update'|'redeploy'|'rollback';
+  phase:'started'|'completed'|'failed';
+  product:string;
+  productVersion?:string|null;
+  previousVersion?:string|null;
+  releaseId?:string|null;
+  deploymentId?:string|null;
+  deploymentUrl?:string|null;
+  projectId?:string|null;
+  projectName?:string|null;
+  provider?:string|null;
+  region?:string|null;
+  platform?:string|null;
+  architecture?:string|null;
+  hostname?:string|null;
+  client?:string|null;
+  clientVersion?:string|null;
+  sourceIp?:string|null;
+  userAgent?:string|null;
+  customerIdentity?:Record<string,unknown>|null;
+  details?:Record<string,unknown>;
+}) {
+  const pool=db();
+  const license=(await pool.query('select id,status,expires_at from licenses where id=$1 limit 1',[input.licenseId])).rows[0];
+  if(!license) throw Object.assign(new Error('License not found'),{code:'LICENSE_NOT_FOUND',status:404});
+  if(license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())) throw Object.assign(new Error('License is not active'),{code:'LICENSE_NOT_ELIGIBLE',status:403});
+  const activation=(await pool.query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[input.licenseId,input.installationId])).rows[0];
+  if(!activation) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
+  if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
+  const details=input.details&&typeof input.details==='object'?input.details:{};
+  const components=(details.components&&typeof details.components==='object')?details.components:{};
+  await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)',[
+    input.licenseId,activation.id,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify(details)
+  ]);
+  await pool.query('update activations set last_seen_at=now(),last_ip=coalesce($3,last_ip),last_user_agent=coalesce($4,last_user_agent),last_hostname=coalesce($5,last_hostname),last_platform=coalesce($6,last_platform),last_architecture=coalesce($7,last_architecture),last_client=coalesce($8,last_client),last_client_version=coalesce($9,last_client_version),last_provider=coalesce($10,last_provider),last_region=coalesce($11,last_region),last_deployment_id=coalesce($12,last_deployment_id),last_deployment_url=coalesce($13,last_deployment_url),last_deployment_status=$14,last_operation=$15,product_version=coalesce($16,product_version),deployment_count=deployment_count+case when $17=true then 1 else 0 end,current_components=case when $18::jsonb<>'{}'::jsonb then $18::jsonb else current_components end where id=$1',[activation.id,input.licenseId,input.sourceIp??null,input.userAgent??null,input.hostname??null,input.platform??null,input.architecture??null,input.client??null,input.clientVersion??null,input.provider??null,input.region??null,input.deploymentId??null,input.deploymentUrl??null,input.phase,input.action,input.productVersion??null,input.phase==='completed',JSON.stringify(components)]);
+  return {ok:true,activationId:activation.id,installationId:input.installationId};
 }
