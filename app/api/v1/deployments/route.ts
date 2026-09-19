@@ -30,6 +30,11 @@ export async function POST(request:Request){
   if(licenseId){
     const license=(await db().query(`select id,status,expires_at from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
     if(!license||license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now()))return NextResponse.json({error:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE'},{status:403});
+    if(installationId){
+      const activation=(await db().query('select status from activations where license_id=$1 and installation_id=$2 limit 1',[licenseId,installationId])).rows[0];
+      if(activation && activation.status!=='active')return NextResponse.json({error:'INSTALLATION_LOCKED_OR_TERMINATED'},{status:403});
+      if(!activation && action!=='deploy')return NextResponse.json({error:'INSTALLATION_NOT_REGISTERED'},{status:403});
+    }
     const channel=String(release.channel||'stable');
     if(channel!=='stable'){
       const policy=(await db().query('select access_mode,enabled from release_channels where channel=$1 limit 1',[channel])).rows[0];
