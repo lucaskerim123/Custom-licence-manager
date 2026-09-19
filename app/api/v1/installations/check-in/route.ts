@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const phase=String(body?.phase||'completed').toLowerCase();
   if(!licenseId||!installationId||!product)return NextResponse.json({error:'license_id, installation_id and product are required'},{status:400});
   if(!['check_in','deploy','update','redeploy','rollback'].includes(action))return NextResponse.json({error:'INVALID_ACTION'},{status:400});
-  if(!['started','completed','failed'].includes(phase))return NextResponse.json({error:'INVALID_PHASE'},{status:400});
+  if(!['authorize','started','completed','failed'].includes(phase))return NextResponse.json({error:'INVALID_PHASE'},{status:400});
   try {
     const result=await recordInstallationCheckIn({
       licenseId,installationId,action:action as any,phase:phase as any,product,
