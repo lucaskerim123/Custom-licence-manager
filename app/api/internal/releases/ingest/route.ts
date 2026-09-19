@@ -44,7 +44,7 @@ export async function POST(request:Request){
       vercelReady:Boolean(body.vercel_ready),supabaseReady:Boolean(body.supabase_ready),customerPublicationRepo:String(body.customer_publication_repo??'lucaskerim123/V2_Billing_Store'),
       reviewStatus:'pending',deploymentStatus:'not_started',notes:changelog??'Automatically received from the OrbitFS Base release pipeline.',actor:'orbitfs-base-release',manifest
     });
-    return NextResponse.json({ok:true,release_id:row.id,status:row.status,review_status:row.review_status,artifact_url:row.artifact_url});
+    const validated=await import('../../../../../lib/core/releases').then(m=>m.validateRelease(row.id,null,'orbitfs-base-release-validator')).catch(()=>row);return NextResponse.json({ok:true,release_id:validated.id,status:validated.status,review_status:validated.review_status,validation:validated.manifest?.validation??null,artifact_url:validated.artifact_url});
   }catch(error){
     return NextResponse.json({error:error instanceof Error?error.message:'Unable to ingest release'},{status:503});
   }
