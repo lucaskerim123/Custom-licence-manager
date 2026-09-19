@@ -1,6 +1,6 @@
-import {db} from '../../../lib/db';
+import {db} from '../../../../lib/db';
 import {requireUser} from '../../../lib/session';
-import SideNav from '../../components/SideNav';
+import SideNav from '../../../components/SideNav';
 import PageHeader from '../../components/PageHeader';
 export const dynamic='force-dynamic';
 const roles=['owner','admin'];
