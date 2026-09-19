@@ -24,7 +24,7 @@ export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:stri
 
 export async function licenseControlAction(_prev:{ok:boolean,key:string,error:string}, formData:FormData){
   const user=await requireUser();
-  if(!roles.includes(user.role)) return;
+  if(!roles.includes(user.role)) return {ok:false,key:'',error:'You do not have permission to control licenses'};
   const id=String(formData.get('id')||'');const action=String(formData.get('action')||'');const installationId=String(formData.get('installation_id')||'');
   if(!id)return {ok:false,key:'',error:'License id is required'};
   try{
