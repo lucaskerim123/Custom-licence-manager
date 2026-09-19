@@ -70,7 +70,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } catch {
       return NextResponse.json({ error: 'INVALID_ARTIFACT_MANIFEST' }, { status: 400 });
     }
-    const tag = `orbitfs-${release.release_type}-${release.version}`;
+    const tag = `orbitfs-${release.release_type}-${release.version}-${String(release.id).slice(0,8)}`;
     let ghRelease: any;
     try {
       ghRelease = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases/tags/${encodeURIComponent(tag)}`);
