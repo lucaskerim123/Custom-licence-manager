@@ -78,3 +78,24 @@ alter table releases add column if not exists vercel_ready boolean not null defa
 alter table releases add column if not exists supabase_ready boolean not null default false;
 alter table releases add column if not exists customer_publication_repo text;
 alter table audit_events add column if not exists actor_user_id uuid references users(id) on delete set null;
+
+create table if not exists release_channels (
+  id uuid primary key default gen_random_uuid(),
+  channel text not null unique,
+  label text not null,
+  description text not null default '',
+  enabled boolean not null default true,
+  customer_visible boolean not null default true,
+  sort_order integer not null default 100,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint release_channels_name_check check(channel ~ '^[a-z0-9][a-z0-9_-]{0,31}$')
+);
+insert into release_channels(channel,label,description,sort_order) values
+ ('stable','Stable','Production releases for normal customers.',10),
+ ('beta','Beta','Pre-release builds for assigned beta customers.',20),
+ ('dev','Development','Development releases for explicitly assigned customers.',30)
+on conflict(channel) do nothing;
+alter table releases drop constraint if exists releases_channel_fkey;
+alter table releases add constraint releases_channel_fkey foreign key(channel) references release_channels(channel);
+create index if not exists release_channels_enabled_idx on release_channels(enabled,customer_visible,sort_order);
