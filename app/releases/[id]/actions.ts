@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
-import { setReleaseReview, validateRelease, archiveRelease } from '../../../lib/core/releases';
+import { setReleaseReview, validateRelease, archiveRelease, promoteRelease } from '../../../lib/core/releases';
 
 export type ReleaseCheck = { key: string; ok: boolean; message: string };\ntype ActionState = { ok: boolean; message: string; checks?: ReleaseCheck[]; checkedAt?: string };
 
@@ -34,6 +34,19 @@ export async function runReleaseAction(_prev: ActionState, formData: FormData): 
       revalidatePath('/releases/base');
       revalidatePath('/releases/' + id);
       return { ok: true, message: action === 'approve' ? 'Technical approval recorded. Candidate is ready for Billing Store final review.' : 'Release rejected and held out of publication.' };
+    }
+
+    if (action === 'promote') {
+      const targetChannel = String(formData.get('target_channel') || '').trim().toLowerCase();
+      if (!targetChannel) return { ok: false, message: 'Target channel is required.' };
+      const row = await promoteRelease(id, targetChannel, user.id, user.email);
+      if (!row) return { ok: false, message: 'Release not found.' };
+      revalidatePath('/releases');
+      revalidatePath('/releases/base');
+      revalidatePath('/releases/' + id);
+      revalidatePath('/releases/' + row.id);
+      const validation = row.manifest?.validation || {};
+      return { ok: validation.status === 'passed', message: 'Release promoted to ' + targetChannel + ' as a new technical-review candidate.', checks: Array.isArray(validation.checks) ? validation.checks : [], checkedAt: validation.checked_at };
     }
 
     if (action === 'archive') {
