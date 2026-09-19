@@ -43,3 +43,52 @@ alter table if exists activations drop constraint if exists activations_status_c
 alter table if exists activations add constraint activations_status_check check(status in ('active','locked','terminated'));
 create or replace function touch_updated_at() returns trigger language plpgsql as $ begin new.updated_at=now(); return new; end $;
 drop trigger if exists users_touch on users;create trigger users_touch before update on users for each row execute function touch_updated_at();drop trigger if exists products_touch on products;create trigger products_touch before update on products for each row execute function touch_updated_at();drop trigger if exists licenses_touch on licenses;create trigger licenses_touch before update on licenses for each row execute function touch_updated_at();
+
+create table if not exists deployment_events (
+  id uuid primary key default gen_random_uuid(),
+  license_id uuid references licenses(id) on delete set null,
+  activation_id uuid references activations(id) on delete set null,
+  installation_id text,
+  release_id uuid references releases(id) on delete set null,
+  action text not null check(action in ('deploy','update','redeploy','rollback')),
+  phase text not null check(phase in ('authorize','started','completed','failed')),
+  product text,
+  product_version text,
+  previous_version text,
+  deployment_id text,
+  deployment_url text,
+  project_id text,
+  project_name text,
+  provider text,
+  region text,
+  platform text,
+  architecture text,
+  hostname text,
+  client text,
+  client_version text,
+  source_ip text,
+  user_agent text,
+  customer_identity jsonb not null default '{}'::jsonb,
+  details jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+alter table if exists activations add column if not exists first_seen_at timestamptz not null default now();
+alter table if exists activations add column if not exists last_ip text;
+alter table if exists activations add column if not exists last_user_agent text;
+alter table if exists activations add column if not exists last_hostname text;
+alter table if exists activations add column if not exists last_platform text;
+alter table if exists activations add column if not exists last_architecture text;
+alter table if exists activations add column if not exists last_client text;
+alter table if exists activations add column if not exists last_client_version text;
+alter table if exists activations add column if not exists last_provider text;
+alter table if exists activations add column if not exists last_region text;
+alter table if exists activations add column if not exists last_deployment_id text;
+alter table if exists activations add column if not exists last_deployment_url text;
+alter table if exists activations add column if not exists last_deployment_status text;
+alter table if exists activations add column if not exists last_operation text;
+alter table if exists activations add column if not exists deployment_count integer not null default 0;
+alter table if exists activations add column if not exists current_components jsonb not null default '{}'::jsonb;
+create index if not exists deployment_events_installation_idx on deployment_events(installation_id,created_at desc);
+create index if not exists deployment_events_license_idx on deployment_events(license_id,created_at desc);
+create index if not exists deployment_events_release_idx on deployment_events(release_id,created_at desc);
+create index if not exists deployment_events_deployment_idx on deployment_events(deployment_id);
