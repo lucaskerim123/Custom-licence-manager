@@ -24,7 +24,7 @@ Configure these in Vercel Production, Preview and Development as required:
 
 `ADMIN_API_TOKEN` — optional server-to-server admin credential for endpoints that explicitly use the admin API token.
 
-`GITHUB_RELEASE_TOKEN` — required when the Base source repository is private and License Master must proxy GitHub release assets. Use a fine-grained GitHub token with Contents: Read-only access to `lucaskerim123/V1-vercel-base`.
+`GITHUB_RELEASE_TOKEN` — required when the Base source repository is private and License Master must create/read GitHub release assets. Use a fine-grained GitHub token with Contents: Read and write access to `lucaskerim123/V1-vercel-base`.
 
 `BOOTSTRAP_ADMIN_EMAIL` — optional initial administrator.
 
@@ -35,7 +35,7 @@ Never commit real values or expose server secrets as `NEXT_PUBLIC_*` variables.
 ## Base release pipeline
 `lucaskerim123/V1-vercel-base` builds and packages the complete Base release on demand. The GitHub Actions workflow sends the release metadata to `POST /api/internal/releases/ingest` using a License Master managed API key with the `releases.write` scope.
 
-Because the Base repository is private, the workflow stores the GitHub release asset as an API release-asset URL. License Master uses `GITHUB_RELEASE_TOKEN` to retrieve the private asset and proxies it through the authenticated release artifact endpoint.
+Because the Base repository is private, the workflow sends the package to the License Master API. License Master creates the corresponding GitHub release/asset using `GITHUB_RELEASE_TOKEN`, then records the API release-asset URL and proxies it through the authenticated release artifact endpoint.
 
 The resulting flow is:
 
@@ -63,3 +63,11 @@ No License Master private signing material should be placed in the Billing Store
 
 ## Production deployment verification
 Production is deployed from `main`. Every functional change to the admin pages or release intake must result in a new Vercel production deployment before it is considered live. The Base Deployment page and Releases & Updates page are separate production routes: `/releases/base` and `/releases`.
+
+
+## Canonical hosts
+
+- Admin UI: `https://panel.incendiarynetworks.cc`
+- External API: `https://api.incendiarynetworks.cc`
+- API endpoints are under `/api/v1/*`.
+- `api.incendiarynetworks.cc` is API-only; its root returns the API health response. It does not serve the admin UI.
