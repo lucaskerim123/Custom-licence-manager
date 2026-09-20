@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.actor == 'lucaskerim123' }}
+    if: ${{ github.event.issue.user.login == 'lucaskerim123' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
