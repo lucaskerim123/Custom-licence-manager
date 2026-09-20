@@ -68,6 +68,6 @@ Production is deployed from `main`. Every functional change to the admin pages o
 ## Canonical hosts
 
 - Admin UI: `https://panel.incendiarynetworks.cc`
-- External API: `https://api.incendiarynetworks.cc`
+- External API: `https://incendiarynetworks.cc/api`
 - API endpoints are under `/api/v1/*`.
-- `api.incendiarynetworks.cc` is API-only; its root returns the API health response. It does not serve the admin UI.
+- `incendiarynetworks.cc/api` is API-only; its root returns the API health response. It does not serve the admin UI.
