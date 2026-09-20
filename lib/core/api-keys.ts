@@ -86,6 +86,28 @@ export async function revokeApiKey(id: string, actorUserId: string) {
   return Boolean(result.rowCount);
 }
 
+export async function deleteRevokedApiKey(id: string, actorUserId: string) {
+  const client = await db().connect();
+  try {
+    await client.query('begin');
+    const existing = await client.query(`select id,name,key_last4,status from api_keys where id=$1 limit 1`, [id]);
+    const key = existing.rows[0];
+    if (!key || key.status !== 'revoked') {
+      await client.query('rollback');
+      return false;
+    }
+    await client.query(`delete from api_keys where id=$1 and status='revoked'`, [id]);
+    await client.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,'admin','api_key.delete','api_key',$2,$3)`, [actorUserId, id, JSON.stringify({name:key.name,key_last4:key.key_last4})]);
+    await client.query('commit');
+    return true;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function listApiKeys() {
   return (await db().query(`select id,name,key_last4,scopes,status,created_at,last_used_at,revoked_at from api_keys order by created_at desc`)).rows;
 }
