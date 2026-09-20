@@ -1,11 +1,12 @@
 name: Production Deploy
 
 on:
-  workflow_run:
-    workflows: ["License Master CI"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm_deploy:
+        description: 'Type DEPLOY to explicitly authorize a production deployment'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,22 +17,20 @@ concurrency:
 
 jobs:
   deploy:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main')
+    if: ${{ github.event.inputs.confirm_deploy == 'DEPLOY' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment:
+      name: production
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: team_W3fS0X03YCjNkD2BoqRj6Uld
       VERCEL_PROJECT_ID: prj_rxRaSrRX2xwnmJ21zfjYL31RkLsv
     steps:
-      - name: Checkout validated commit
+      - name: Checkout exact selected commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Use Node 22
         uses: actions/setup-node@v4
