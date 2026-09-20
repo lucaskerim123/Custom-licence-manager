@@ -78,6 +78,7 @@ jobs:
           else
             STATUS="dispatched"
           fi
+          export STATUS
           python - <<'PY' > /tmp/status.json
           import json, os, datetime
           print(json.dumps({
