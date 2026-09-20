@@ -10,7 +10,14 @@ function time(value?:string){return value?new Date(value).toLocaleString():'—'
 export default function Operations(){
  const [jobs,setJobs]=useState<Jobs|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState('');
  const load=useCallback(async()=>{try{const r=await fetch('/api/operations',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load job status.');setJobs(d.jobs);setError('')}catch(e:any){setError(e.message||'Unable to load job status.')}},[]);
- useEffect(()=>{load();const t=setInterval(load,15000);return()=>clearInterval(t)},[load]);
+ useEffect(()=>{load()},[load]);
+ useEffect(()=>{
+  if(!jobs)return;
+  const running=Object.values(jobs).some(j=>j.ci?.status!=='completed'||j.deploy?.status!=='completed');
+  if(!running)return;
+  const t=setInterval(load,15000);
+  return()=>clearInterval(t);
+ },[jobs,load]);
  async function run(job:'licenseManager'|'billingStore',action:'ci'|'deploy'){
   if(action==='deploy'&&!window.confirm('Start the production deployment workflow for '+jobs?.[job].label+'?\\n\\nThe workflow still performs its production preflight and requires the explicit DEPLOY input.'))return;
   setBusy(job+action);setError('');
