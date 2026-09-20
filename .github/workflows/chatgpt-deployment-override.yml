@@ -8,52 +8,74 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: chatgpt-deployment-override
+  cancel-in-progress: false
+
 jobs:
   dispatch:
-    if: ${{ github.actor == 'lucaskerim123' && startsWith(github.event.issue.title, 'DEPLOY NOW') }}
+    if: ${{ github.actor == 'lucaskerim123' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Parse one-shot deployment target
         id: target
         shell: bash
+        env:
+          COMMAND: ${{ github.event.issue.title }}
         run: |
           set -euo pipefail
-          title="${{ github.event.issue.title }}"
-          case "$title" in
-            "DEPLOY NOW LM") echo "repo=lucaskerim123/Custom-licence-manager" >> "$GITHUB_OUTPUT" ;;
-            "DEPLOY NOW V2") echo "repo=lucaskerim123/V2_Billing_Store" >> "$GITHUB_OUTPUT" ;;
-            "DEPLOY NOW"|"DEPLOY NOW BOTH") echo "repo=both" >> "$GITHUB_OUTPUT" ;;
-            *) echo "repo=invalid" >> "$GITHUB_OUTPUT" ;;
+          case "$COMMAND" in
+            "DEPLOY NOW LM"|"DEPLOY LM NOW") echo "target=lm" >> "$GITHUB_OUTPUT" ;;
+            "DEPLOY NOW V2"|"DEPLOY V2 NOW") echo "target=v2" >> "$GITHUB_OUTPUT" ;;
+            "DEPLOY NOW"|"DEPLOY NOW BOTH"|"DEPLOY BOTH NOW") echo "target=both" >> "$GITHUB_OUTPUT" ;;
+            *) echo "target=invalid" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Reject invalid override command
-        if: steps.target.outputs.repo == 'invalid'
-        run: |
-          gh issue comment "${{ github.event.issue.number }}" --body "Override not executed. Valid one-shot commands are DEPLOY NOW, DEPLOY NOW V2, or DEPLOY NOW LM."
+      - name: Reject invalid command and close request
+        if: steps.target.outputs.target == 'invalid'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER" --body "No deployment executed. Valid commands: DEPLOY NOW, DEPLOY BOTH NOW, DEPLOY NOW V2, DEPLOY NOW LM."
+          gh issue close "$ISSUE_NUMBER"
 
       - name: Dispatch V2 Billing Store production deployment
-        if: steps.target.outputs.repo == 'lucaskerim123/V2_Billing_Store' || steps.target.outputs.repo == 'both'
-        run: |
-          set -euo pipefail
-          curl --fail-with-body -sS -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GITHUB_ACTIONS_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             https://api.github.com/repos/lucaskerim123/V2_Billing_Store/actions/workflows/production-deploy.yml/dispatches             -d '{"ref":"main"}'
+        if: steps.target.outputs.target == 'v2' || steps.target.outputs.target == 'both'
         env:
           GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_ACTIONS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_ACTIONS_TOKEN"
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_ACTIONS_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/lucaskerim123/V2_Billing_Store/actions/workflows/production-deploy.yml/dispatches \
+            -d '{"ref":"main"}'
 
       - name: Dispatch License Manager production deployment
-        if: steps.target.outputs.repo == 'lucaskerim123/Custom-licence-manager' || steps.target.outputs.repo == 'both'
-        run: |
-          set -euo pipefail
-          curl --fail-with-body -sS -X POST             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GITHUB_ACTIONS_TOKEN"             -H "X-GitHub-Api-Version: 2022-11-28"             https://api.github.com/repos/lucaskerim123/Custom-licence-manager/actions/workflows/production-deploy.yml/dispatches             -d '{"ref":"main"}'
+        if: steps.target.outputs.target == 'lm' || steps.target.outputs.target == 'both'
         env:
           GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_ACTIONS_TOKEN }}
-
-      - name: Record and close one-shot override request
-        if: steps.target.outputs.repo != 'invalid'
         run: |
           set -euo pipefail
-          gh issue comment "${{ github.event.issue.number }}" --body "OVERRIDE DEPLOY dispatched for ${{ steps.target.outputs.repo }}. This was a one-shot deployment authorization; it does not enable Vercel Git auto-deploy or change the normal deployment gate."
-          gh issue close "${{ github.event.issue.number }}"
+          test -n "$GITHUB_ACTIONS_TOKEN"
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GITHUB_ACTIONS_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/lucaskerim123/Custom-licence-manager/actions/workflows/production-deploy.yml/dispatches \
+            -d '{"ref":"main"}'
+
+      - name: Record and close one-shot override request
+        if: steps.target.outputs.target != 'invalid'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE_NUMBER" --body "OVERRIDE DEPLOY dispatched from main. One-shot authorization only; Vercel Git auto-deploy remains disabled."
+          gh issue close "$ISSUE_NUMBER"
