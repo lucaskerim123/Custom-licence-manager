@@ -88,8 +88,18 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
     return {...replacement,key,alreadyIssued:false};
   }
 
-  // A revoked/terminated license is terminal. A fresh row is required so the
-  // old record remains an auditable historical record.
+  // If this is a historical/terminal row but a current license for the same
+  // customer/product already exists, rotate that current row instead of creating
+  // another license. This makes repeated clicks on old history records harmless.
+  if(current.customer_external_id){
+    const currentActive=(await pool.query('select l.id from licenses l where l.product_id=$1 and l.customer_external_id=$2 and l.status not in (\'revoked\',\'expired\') order by l.created_at desc limit 1',[current.product_id,String(current.customer_external_id)])).rows[0];
+    if(currentActive?.id && String(currentActive.id)!==String(id)){
+      return rotateLicense(String(currentActive.id),actorUserId,actor);
+    }
+  }
+
+  // No current license exists, so a terminal record may be replaced. The old
+  // record remains historical and auditable.
   const replacement=await issueLicense({
     productId:current.product_id,
     customerExternalId:current.customer_external_id,
