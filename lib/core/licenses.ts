@@ -88,35 +88,9 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
     return {...replacement,key,alreadyIssued:false};
   }
 
-  // If this is a historical/terminal row but a current license for the same
-  // customer/product already exists, rotate that current row instead of creating
-  // another license. This makes repeated clicks on old history records harmless.
-  if(current.customer_external_id){
-    const currentActive=(await pool.query('select l.id from licenses l where l.product_id=$1 and l.customer_external_id=$2 and l.status not in (\'revoked\',\'expired\') order by l.created_at desc limit 1',[current.product_id,String(current.customer_external_id)])).rows[0];
-    if(currentActive?.id && String(currentActive.id)!==String(id)){
-      return rotateLicense(String(currentActive.id),actorUserId,actor);
-    }
-  }
-
-  // No current license exists, so a terminal record may be replaced. The old
-  // record remains historical and auditable.
-  const replacement=await issueLicense({
-    productId:current.product_id,
-    customerExternalId:current.customer_external_id,
-    customerOverride:current.customer_override,
-    externalReference:`rotation:${id}:${Date.now()}`,
-    expiresAt:current.expires_at?new Date(current.expires_at):null,
-    metadata:{...(current.metadata||{}),rotated_from:id},
-    actorUserId,
-    actor
-  });
-  await pool.query('update activations set license_id=$1 where license_id=$2 and status<>$3',[replacement.id,id,'terminated']);
-  await pool.query(
-    `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
-     values($1,$2,'license.rotate','license',$3,$4)`,
-    [actorUserId??null,actor??'system',replacement.id,JSON.stringify({previous_license_id:id,migrated_installations:true,created_replacement:true})],
-  );
-  return replacement;
+  // Rotation never issues a second license record. Terminal licenses are
+  // historical records and must be explicitly reissued through the issuance flow.
+  throw new Error('Only an active or suspended license can be rotated');
 }
 
 
