@@ -56,6 +56,18 @@ export async function validateLicense(input:{key:string;productSlug:string;insta
   return{valid,code,status:valid?200:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id};
 }
 
+export async function deleteLicense(id:string,actorUserId?:string|null,actor?:string){
+  const pool=db(); const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const current=(await client.query('select id,customer_external_id,product_id,status from licenses where id=$1 for update',[id])).rows[0];
+    if(!current) throw new Error('License not found');
+    await client.query('delete from licenses where id=$1',[id]);
+    await client.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.delete','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({customer_external_id:current.customer_external_id,product_id:current.product_id,status:current.status,key_destroyed:true})]);
+    await client.query('COMMIT'); return {id,deleted:true};
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}
+
 export async function setLicenseStatus(id:string,status:LicenseStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update licenses set status=$1 where id=$2 returning id,status`,[status,id]);if(!result.rowCount)throw new Error('License not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.status','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);return result.rows[0];}
 
 export async function setInstallationStatus(id:string,status:InstallationStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update activations set status=$1 where id=$2 returning id,license_id,installation_id,status,last_seen_at`,[status,id]);if(!result.rowCount)throw new Error('Installation not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'installation.status','activation',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);return result.rows[0];}
