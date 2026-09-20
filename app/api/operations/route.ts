@@ -57,7 +57,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Deploy is blocked until the latest CI/preflight run on main passes. Use Direct Deploy Override for an explicit manual override.' }, { status: 409 });
       }
     }
-    const inputs = { confirm_deploy: 'DEPLOY' };
+    const inputs = {};
     await github('/repos/' + cfg.repo + '/actions/workflows/' + workflow + '/dispatches', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ref: 'main', inputs }),
