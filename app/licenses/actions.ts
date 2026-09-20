@@ -1,5 +1,5 @@
 'use server';
-import { issueLicense, rotateLicense, setInstallationStatus, setLicenseStatus } from '../../lib/core/licenses';
+import { issueLicense, rotateLicense, setInstallationStatus, setLicenseStatus, deleteLicense } from '../../lib/core/licenses';
 import { db } from '../../lib/db';
 import { requireUser } from '../../lib/session';
 
@@ -44,6 +44,7 @@ export async function licenseControlAction(formData:FormData){
   const id=String(formData.get('id')||'');const action=String(formData.get('action')||'');const installationId=String(formData.get('installation_id')||'');
   if(!id)return;
   if(action==='suspend'||action==='activate'||action==='revoke'){await setLicenseStatus(id,action==='activate'?'active':action==='suspend'?'suspended':'revoked',user.id,user.email);return;}
+  if(action==='delete'){await deleteLicense(id,user.id,user.email);return;}
   if(installationId&&['unlock','lock','terminate'].includes(action)){
     const activation=(await db().query('select id from activations where id=$1 and license_id=$2',[installationId,id])).rows[0];
     if(activation)await setInstallationStatus(activation.id,action==='unlock'?'active':action==='lock'?'locked':'terminated',user.id,user.email);
