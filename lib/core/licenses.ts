@@ -48,12 +48,49 @@ export async function setInstallationStatus(id:string,status:InstallationStatus,
 
 export async function rotateLicense(id:string,actorUserId?:string|null,actor?:string){
   const pool=db();
-  const current=(await pool.query(`select l.id,l.expires_at,l.customer_external_id,l.customer_override,l.metadata,p.id product_id from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
+  const current=(await pool.query(`select l.id,l.status,l.expires_at,l.customer_external_id,l.customer_override,l.metadata,p.id product_id from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
   if(!current)throw new Error('License not found');
-  const replacement=await issueLicense({productId:current.product_id,customerExternalId:current.customer_external_id,customerOverride:current.customer_override,externalReference:`rotation:${id}:${Date.now()}`,expiresAt:current.expires_at?new Date(current.expires_at):null,metadata:{...(current.metadata||{}),rotated_from:id},actorUserId,actor});
+
+  // Rotation is a credential replacement, not a new license. Reuse the same
+  // database row whenever the license is not terminally revoked. This keeps
+  // one customer license record while replacing only its secret.
+  if(current.status!=='revoked'){
+    const key=generateLicenseKey();
+    const result=await pool.query(
+      `update licenses
+       set license_key_hash=$1,
+           license_key_last4=$2
+       where id=$3
+       returning id,status,expires_at,customer_external_id,customer_override`,
+      [hashKey(key),key.slice(-4),id],
+    );
+    const replacement=result.rows[0];
+    await pool.query(
+      `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
+       values($1,$2,'license.rotate','license',$3,$4)`,
+      [actorUserId??null,actor??'system',id,JSON.stringify({reused_license_id:id,previous_last4:null,rotated_in_place:true})],
+    );
+    return {...replacement,key,alreadyIssued:false};
+  }
+
+  // A revoked/terminated license is terminal. A fresh row is required so the
+  // old record remains an auditable historical record.
+  const replacement=await issueLicense({
+    productId:current.product_id,
+    customerExternalId:current.customer_external_id,
+    customerOverride:current.customer_override,
+    externalReference:`rotation:${id}:${Date.now()}`,
+    expiresAt:current.expires_at?new Date(current.expires_at):null,
+    metadata:{...(current.metadata||{}),rotated_from:id},
+    actorUserId,
+    actor
+  });
   await pool.query('update activations set license_id=$1 where license_id=$2 and status<>$3',[replacement.id,id,'terminated']);
-  await setLicenseStatus(id,'revoked',actorUserId,actor);
-  await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.rotate','license',$3,$4)`,[actorUserId??null,actor??'system',replacement.id,JSON.stringify({previous_license_id:id,migrated_installations:true})]);
+  await pool.query(
+    `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
+     values($1,$2,'license.rotate','license',$3,$4)`,
+    [actorUserId??null,actor??'system',replacement.id,JSON.stringify({previous_license_id:id,migrated_installations:true,created_replacement:true})],
+  );
   return replacement;
 }
 
