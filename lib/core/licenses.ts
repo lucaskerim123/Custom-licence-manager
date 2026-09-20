@@ -10,6 +10,12 @@ export async function issueLicense(input: { productId: string; customerExternalI
   const pool=db();
   const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
   if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode) throw new Error('License authority is offline');
+  // A customer has one current license per product. Retries or repeated issuance
+  // requests reuse the existing non-terminal record instead of creating duplicates.
+  if(input.customerExternalId){
+    const existingCurrent=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.slug product from licenses l join products p on p.id=l.product_id where p.id=$1 and l.customer_external_id=$2 and l.status not in ('revoked','expired') order by l.created_at desc limit 1`,[input.productId,String(input.customerExternalId)])).rows[0];
+    if(existingCurrent)return {...existingCurrent,key:undefined,alreadyIssued:true};
+  }
   if(input.externalReference){
     const existing=(await pool.query('select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,p.slug product from licenses l join products p on p.id=l.product_id where l.external_reference=$1 order by l.created_at asc limit 1',[String(input.externalReference)])).rows[0];
     if(existing)return {...existing,key:undefined,alreadyIssued:true};
@@ -48,14 +54,15 @@ export async function setInstallationStatus(id:string,status:InstallationStatus,
 
 export async function rotateLicense(id:string,actorUserId?:string|null,actor?:string){
   const pool=db();
-  const current=(await pool.query(`select l.id,l.status,l.expires_at,l.customer_external_id,l.customer_override,l.metadata,p.id product_id from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
+  const current=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.id product_id from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
   if(!current)throw new Error('License not found');
 
   // Rotation is a credential replacement, not a new license. Reuse the same
-  // database row whenever the license is not terminally revoked. This keeps
-  // one customer license record while replacing only its secret.
-  if(current.status!=='revoked'){
+  // database row whenever the license is not terminal. This keeps one current
+  // license record per customer/product while replacing only its secret.
+  if(current.status!=='revoked' && current.status!=='expired'){
     const key=generateLicenseKey();
+    const previousLast4=current.license_key_last4||null;
     const result=await pool.query(
       `update licenses
        set license_key_hash=$1,
@@ -68,7 +75,7 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
     await pool.query(
       `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
        values($1,$2,'license.rotate','license',$3,$4)`,
-      [actorUserId??null,actor??'system',id,JSON.stringify({reused_license_id:id,previous_last4:null,rotated_in_place:true})],
+      [actorUserId??null,actor??'system',id,JSON.stringify({reused_license_id:id,previous_last4:previousLast4,rotated_in_place:true})],
     );
     return {...replacement,key,alreadyIssued:false};
   }
