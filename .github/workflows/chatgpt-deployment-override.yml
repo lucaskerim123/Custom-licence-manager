@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.actor == 'lucaskerim123' }}
+    if: ${{ startsWith(github.event.head_commit.message, 'ChatGPT Deploy Request:') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
