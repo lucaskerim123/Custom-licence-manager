@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 import { validateLicense } from '../../../../../lib/core/licenses';
 
 function requestIp(request: Request) {
