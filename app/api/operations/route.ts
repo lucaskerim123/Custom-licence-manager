@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       const latest = await github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.ci + '/runs?branch=main&per_page=1');
       const latestRun = latest.workflow_runs?.[0];
       if (!latestRun || latestRun.status !== 'completed' || latestRun.conclusion !== 'success') {
-        return NextResponse.json({ error: 'Deploy is blocked until the latest CI/preflight run on main passes. Use Direct Deploy Override for an explicit manual override.' }, { status: 409 });
+        return NextResponse.json({ error: 'Deploy is blocked until the latest CI/preflight run on main passes. Use OVERRIDE DEPLOY for an explicit one-shot manual override.' }, { status: 409 });
       }
     }
     const startedAt = Date.now();
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({ ref: 'main' }),
     });
     const run = await findStartedRun(cfg, workflow, startedAt);
-    return NextResponse.json({ ok: true, run, action, job, message: cfg.label + ' ' + (action === 'ci' ? 'CI' : action === 'override-deploy' ? 'direct production deployment override' : 'production deployment') + ' queued.' });
+    return NextResponse.json({ ok: true, run, action, job, message: cfg.label + ' ' + (action === 'ci' ? 'CI' : action === 'override-deploy' ? 'OVERRIDE DEPLOY' : 'production deployment') + ' queued.' });
   } catch (error: any) {
     const message = error?.message || 'Unable to start GitHub job.';
     return NextResponse.json({ error: message }, { status: message.includes('authorized') ? 403 : 500 });
