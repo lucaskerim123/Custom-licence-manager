@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const API_HOST = 'api.incendiarynetworks.cc';
+const API_HOST = 'incendiarynetworks.cc';
 const PANEL_HOST = 'panel.incendiarynetworks.cc';
 
 export function middleware(request: NextRequest) {
