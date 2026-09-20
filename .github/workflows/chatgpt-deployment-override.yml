@@ -30,7 +30,7 @@ jobs:
           data = json.loads(Path('.github/chatgpt-deploy-request.json').read_text())
           target = data.get('target')
           request_id = data.get('request_id')
-          if target not in {'lm', 'v2', 'both'}:
+          if target not in {'none', 'lm', 'v2', 'both'}:
               raise SystemExit(f'Invalid deployment target: {target!r}')
           if not request_id:
               raise SystemExit('Missing deployment request_id')
