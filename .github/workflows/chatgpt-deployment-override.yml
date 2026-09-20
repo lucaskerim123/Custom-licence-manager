@@ -7,7 +7,7 @@ on:
       - '.github/chatgpt-deploy-request.json'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: chatgpt-deployment-override
@@ -67,5 +67,36 @@ jobs:
             -d '{"ref":"main"}'
 
       - name: Record one-shot request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ steps.request.outputs.TARGET }}
+          REQUEST_ID: ${{ steps.request.outputs.REQUEST_ID }}
         run: |
-          echo "OVERRIDE DEPLOY dispatched: target=${{ steps.request.outputs.TARGET }} request=${{ steps.request.outputs.REQUEST_ID }} commit=${GITHUB_SHA}"
+          set -euo pipefail
+          if [ "$TARGET" = "none" ]; then
+            STATUS="idle"
+          else
+            STATUS="dispatched"
+          fi
+          python - <<'PY' > /tmp/status.json
+          import json, os, datetime
+          print(json.dumps({
+            "status": os.environ["STATUS"],
+            "target": os.environ["TARGET"],
+            "request_id": os.environ["REQUEST_ID"],
+            "source_commit": os.environ["GITHUB_SHA"],
+            "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+          }, indent=2) + "\\n")
+          PY
+          if gh api repos/lucaskerim123/Custom-licence-manager/contents/.github/chatgpt-deploy-status.json --silent >/dev/null 2>&1; then
+            sha=$(gh api repos/lucaskerim123/Custom-licence-manager/contents/.github/chatgpt-deploy-status.json --jq '.sha')
+            gh api --method PUT repos/lucaskerim123/Custom-licence-manager/contents/.github/chatgpt-deploy-status.json \
+              -f message="Record ChatGPT deployment request $REQUEST_ID" \
+              -f content="$(base64 -w0 /tmp/status.json)" \
+              -f sha="$sha" >/dev/null
+          else
+            gh api --method PUT repos/lucaskerim123/Custom-licence-manager/contents/.github/chatgpt-deploy-status.json \
+              -f message="Record ChatGPT deployment request $REQUEST_ID" \
+              -f content="$(base64 -w0 /tmp/status.json)" >/dev/null
+          fi
+          echo "OVERRIDE DEPLOY request=$REQUEST_ID target=$TARGET status=$STATUS commit=$GITHUB_SHA"
