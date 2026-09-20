@@ -51,7 +51,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
         <section className="card">
           <h2>Validation</h2>
           <div className="validation-summary"><strong>{passed}</strong><span>passed</span><strong>{failed}</strong><span>failed</span><span className="muted">{validation.checked_at ? new Date(validation.checked_at).toLocaleString() : 'Not run yet'}</span></div>
-          {checks.length ? <div className="check-list">{checks.map((c:any,i:number)=><div className={c.ok?'check-row ok':'check-row fail'} key={c.key || i}><span>{c.ok?'✓':'×'}</span><div><strong>{c.key || 'check'}</strong><div className="muted">{c.message}</div></div></div>)}</div> : <div className="notice">No validation has been run yet.</div>}
+          {checks.length ? <div className="check-list">{checks.map((c:any,i:number)=><div className={c.ok?'check-row ok':'check-row fail'} key={c.key || i}><span>{c.ok?'✓':'×'}</span><div><strong>{c.key || 'check'}</strong><div className="muted">{c.message}</div>{!c.ok&&<><div className="muted" style={{marginTop:6}}><b>Suggested fix:</b> {c.fix||'Inspect the failing check, correct the underlying release/build issue, then validate again.'}</div><pre className="audit-details" style={{marginTop:6,whiteSpace:'pre-wrap'}}>{c.prompt||'Fix the '+(c.key||'failed')+' validation check in the smallest production-safe way. Inspect the related code/configuration, then run the full production validation again. Do not change unrelated files.'}</pre></>}</div></div>)}</div> : <div className="notice">No validation has been run yet.</div>}
         </section>
       </div>
 

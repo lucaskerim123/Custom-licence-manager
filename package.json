@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "bootstrap-admin": "node scripts/bootstrap-admin.mjs",
-    "preflight": "node scripts/preflight.mjs"
+    "preflight": "node scripts/preflight-report.mjs"
   },
   "dependencies": {
     "next": "^15.5.2",

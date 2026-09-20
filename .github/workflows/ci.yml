@@ -34,34 +34,17 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Run complete production validation
+        run: npm run preflight
 
-      - name: Check whitespace and patch integrity
-        run: git diff --check
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Dependency security audit
-        run: npm audit --audit-level=high
-
-      - name: Production build
-        run: npm run build
-
-      - name: Generate complete release/change-set manifest
-        run: node scripts/release-manifest.mjs
-
-      - name: Upload release/change-set manifest
+      - name: Upload temporary validation failure report
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: release-change-set-${{ github.sha }}
-          path: release-manifest.json
-          if-no-files-found: error
-          retention-days: 30
+          name: validation-failure-${{ github.sha }}
+          path: .orbitfs-validation/validation-error.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Production gate passed
         run: echo "CI production gate passed."
