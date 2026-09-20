@@ -1,12 +1,13 @@
 name: ChatGPT Deployment Override
 
 on:
-  issues:
-    types: [opened]
+  push:
+    branches: [main]
+    paths:
+      - '.github/chatgpt-deploy-request.json'
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
   group: chatgpt-deployment-override
@@ -14,36 +15,31 @@ concurrency:
 
 jobs:
   dispatch:
-    if: ${{ github.event.issue.user.login == 'lucaskerim123' }}
+    if: ${{ github.actor == 'lucaskerim123' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Parse one-shot deployment target
-        id: target
+      - name: Read one-shot deployment request
+        id: request
         shell: bash
-        env:
-          COMMAND: ${{ github.event.issue.title }}
         run: |
           set -euo pipefail
-          case "$COMMAND" in
-            "DEPLOY NOW LM"|"DEPLOY LM NOW") echo "target=lm" >> "$GITHUB_OUTPUT" ;;
-            "DEPLOY NOW V2"|"DEPLOY V2 NOW") echo "target=v2" >> "$GITHUB_OUTPUT" ;;
-            "DEPLOY NOW"|"DEPLOY NOW BOTH"|"DEPLOY BOTH NOW") echo "target=both" >> "$GITHUB_OUTPUT" ;;
-            *) echo "target=invalid" >> "$GITHUB_OUTPUT" ;;
-          esac
-
-      - name: Reject invalid command and close request
-        if: steps.target.outputs.target == 'invalid'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          set -euo pipefail
-          gh issue comment "$ISSUE_NUMBER" --body "No deployment executed. Valid commands: DEPLOY NOW, DEPLOY BOTH NOW, DEPLOY NOW V2, DEPLOY NOW LM."
-          gh issue close "$ISSUE_NUMBER"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('.github/chatgpt-deploy-request.json').read_text())
+          target = data.get('target')
+          request_id = data.get('request_id')
+          if target not in {'lm', 'v2', 'both'}:
+              raise SystemExit(f'Invalid deployment target: {target!r}')
+          if not request_id:
+              raise SystemExit('Missing deployment request_id')
+          Path('/tmp/request.env').write_text(f'TARGET={target}\\nREQUEST_ID={request_id}\\n')
+          PY
+          cat /tmp/request.env >> "$GITHUB_OUTPUT"
 
       - name: Dispatch V2 Billing Store production deployment
-        if: steps.target.outputs.target == 'v2' || steps.target.outputs.target == 'both'
+        if: steps.request.outputs.TARGET == 'v2' || steps.request.outputs.TARGET == 'both'
         env:
           GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_ACTIONS_TOKEN }}
         run: |
@@ -57,7 +53,7 @@ jobs:
             -d '{"ref":"main"}'
 
       - name: Dispatch License Manager production deployment
-        if: steps.target.outputs.target == 'lm' || steps.target.outputs.target == 'both'
+        if: steps.request.outputs.TARGET == 'lm' || steps.request.outputs.TARGET == 'both'
         env:
           GITHUB_ACTIONS_TOKEN: ${{ secrets.GITHUB_ACTIONS_TOKEN }}
         run: |
@@ -70,12 +66,6 @@ jobs:
             https://api.github.com/repos/lucaskerim123/Custom-licence-manager/actions/workflows/production-deploy.yml/dispatches \
             -d '{"ref":"main"}'
 
-      - name: Record and close one-shot override request
-        if: steps.target.outputs.target != 'invalid'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+      - name: Record one-shot request
         run: |
-          set -euo pipefail
-          gh issue comment "$ISSUE_NUMBER" --body "OVERRIDE DEPLOY dispatched from main. One-shot authorization only; Vercel Git auto-deploy remains disabled."
-          gh issue close "$ISSUE_NUMBER"
+          echo "OVERRIDE DEPLOY dispatched: target=${{ steps.request.outputs.TARGET }} request=${{ steps.request.outputs.REQUEST_ID }} commit=${GITHUB_SHA}"
