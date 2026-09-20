@@ -27,6 +27,15 @@ async function github(path: string, init: RequestInit = {}) {
 function cleanRun(run: any) {
   return run ? { id: run.id, status: run.status, conclusion: run.conclusion, run_number: run.run_number, head_sha: run.head_sha, created_at: run.created_at, updated_at: run.updated_at, html_url: run.html_url, name: run.name } : null;
 }
+async function findStartedRun(cfg: (typeof REPOS)[keyof typeof REPOS], workflow: string, startedAt: number) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const runs = await github('/repos/' + cfg.repo + '/actions/workflows/' + workflow + '/runs?branch=main&per_page=5');
+    const run = runs.workflow_runs?.find((item: any) => new Date(item.created_at).getTime() >= startedAt - 2000);
+    if (run) return cleanRun(run);
+    await new Promise(resolve => setTimeout(resolve, 750));
+  }
+  return null;
+}
 export async function GET() {
   try {
     await authorize();
@@ -57,12 +66,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Deploy is blocked until the latest CI/preflight run on main passes. Use Direct Deploy Override for an explicit manual override.' }, { status: 409 });
       }
     }
-    const inputs = {};
+    const startedAt = Date.now();
     await github('/repos/' + cfg.repo + '/actions/workflows/' + workflow + '/dispatches', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ref: 'main', inputs }),
+      body: JSON.stringify({ ref: 'main' }),
     });
-    return NextResponse.json({ ok: true, message: cfg.label + ' ' + (action === 'ci' ? 'CI' : action === 'override-deploy' ? 'direct production deployment override' : 'production deployment') + ' queued.' });
+    const run = await findStartedRun(cfg, workflow, startedAt);
+    return NextResponse.json({ ok: true, run, action, job, message: cfg.label + ' ' + (action === 'ci' ? 'CI' : action === 'override-deploy' ? 'direct production deployment override' : 'production deployment') + ' queued.' });
   } catch (error: any) {
     const message = error?.message || 'Unable to start GitHub job.';
     return NextResponse.json({ error: message }, { status: message.includes('authorized') ? 403 : 500 });
