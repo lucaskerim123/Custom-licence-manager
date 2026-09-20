@@ -2,19 +2,23 @@ name: License Master CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: license-master-ci-${{ github.workflow }}-${{ github.ref }}
+  group: license-master-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   production-gate:
+    name: Production Gate
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -27,17 +31,11 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "::warning::package-lock.json is missing. CI will validate with npm install for now, but production deployment remains blocked until a lockfile is committed."
-            npm install --no-audit --no-fund
-          fi
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Check whitespace and patch integrity
         run: git diff --check
@@ -49,14 +47,7 @@ jobs:
         run: npm run typecheck
 
       - name: Dependency security audit
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -f package-lock.json ]; then
-            npm audit --audit-level=high
-          else
-            npm audit --no-package-lock --audit-level=high
-          fi
+        run: npm audit --audit-level=high
 
       - name: Production build
         run: npm run build
@@ -73,4 +64,4 @@ jobs:
           retention-days: 30
 
       - name: Production gate passed
-        run: echo "CI production gate passed: history, whitespace, lint, typecheck, audit, build, and release manifest are green."
+        run: echo "CI production gate passed."
