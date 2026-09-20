@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {requireUser} from '../../../../lib/session';
+import {requireUser} from '../../../lib/session';
 
 const REPOS = {
   licenseManager: { repo: 'lucaskerim123/Custom-licence-manager', ci: 'ci.yml', deploy: 'production-deploy.yml', label: 'Custom License Manager' },
