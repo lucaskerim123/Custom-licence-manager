@@ -16,25 +16,63 @@ concurrency:
 jobs:
   production-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - name: Checkout exact commit
-        uses: actions/checkout@v4
+      - name: Checkout complete repository history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::package-lock.json is missing. CI will validate with npm install for now, but production deployment remains blocked until a lockfile is committed."
+            npm install --no-audit --no-fund
+          fi
+
+      - name: Check whitespace and patch integrity
+        run: git diff --check
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Dependency security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm audit --audit-level=high
+          else
+            npm audit --no-package-lock --audit-level=high
+          fi
+
       - name: Production build
         run: npm run build
 
+      - name: Generate complete release/change-set manifest
+        run: node scripts/release-manifest.mjs
+
+      - name: Upload release/change-set manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-change-set-${{ github.sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Production gate passed
-        run: echo "CI production gate passed: typecheck and production build are green."
+        run: echo "CI production gate passed: history, whitespace, lint, typecheck, audit, build, and release manifest are green."

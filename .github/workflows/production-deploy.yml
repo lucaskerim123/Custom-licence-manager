@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ github.event.inputs.confirm_deploy == 'DEPLOY' }}
+    if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.confirm_deploy == 'DEPLOY' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     environment:
       name: production
     env:
@@ -27,19 +27,42 @@ jobs:
       VERCEL_ORG_ID: team_W3fS0X03YCjNkD2BoqRj6Uld
       VERCEL_PROJECT_ID: prj_rxRaSrRX2xwnmJ21zfjYL31RkLsv
     steps:
-      - name: Checkout exact selected commit
-        uses: actions/checkout@v4
+      - name: Checkout complete repository history at selected commit
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify selected commit is the complete main snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse --is-shallow-repository)" = "false"
+          git fetch origin main --prune
+          test "$(git rev-parse origin/main)" = "${GITHUB_SHA}"
+          test -f package-lock.json
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Run complete production preflight
+        run: npm run preflight
+
+      - name: Generate immutable release/change-set manifest
+        run: node scripts/release-manifest.mjs
+
+      - name: Upload release/change-set manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Verify deployment credentials
         run: |
@@ -54,11 +77,11 @@ jobs:
       - name: Pull Vercel production configuration
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
 
-      - name: Build Vercel production artifact
+      - name: Build exact production artifact without deploying
         run: vercel build --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
 
       - name: Deploy only the validated prebuilt artifact
         run: vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
 
-      - name: Report deployment commit
-        run: echo "Production deployment completed for commit $GITHUB_SHA."
+      - name: Report deployed commit
+        run: echo "Production deployment completed for immutable commit $GITHUB_SHA."
