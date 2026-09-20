@@ -41,10 +41,12 @@ const parsedCommits = commits.map((line) => {
   return { sha, author, timestamp, subject: subject.join("\t") };
 });
 
+const branch = process.env.GITHUB_REF_NAME || git(["branch", "--show-current"]) || "detached";
+
 const manifest = {
   schemaVersion: 1,
   repository: process.env.GITHUB_REPOSITORY ?? "lucaskerim123/Custom-licence-manager",
-  branch: process.env.GITHUB_REF_NAME ?? git(["branch", "--show-current"]) || "detached",
+  branch,
   headSha: head,
   previousReleaseTag: latestTag || null,
   commitCount: parsedCommits.length,
