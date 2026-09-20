@@ -1,0 +1,59 @@
+name: Generate Lockfile
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: generate-lockfile-main
+  cancel-in-progress: true
+
+jobs:
+  lockfile:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout complete repository history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Use Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Generate lockfile if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f package-lock.json ]; then
+            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          fi
+          test -s package-lock.json
+
+      - name: Verify locked install
+        run: npm ci --ignore-scripts
+
+      - name: Commit lockfile only when it was generated
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- package-lock.json; then
+            echo "No lockfile change required."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git diff --cached --check
+          git commit -m "Add npm lockfile"
+          git push origin HEAD:main
