@@ -39,7 +39,8 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   const pool=db();const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
   if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode)return{valid:false,code:'AUTHORITY_UNAVAILABLE' as const,status:503};
   const componentSlug=input.componentSlug||input.productSlug;
-  const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug=$2 and $3='orbitfs' and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key),componentSlug,input.productSlug]);
+  const productFamily=input.productSlug==='orbitfs'?'orbitfs':componentSlug.startsWith('orbitfs_')?'orbitfs':input.productSlug;
+  const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug=$2 and $3='orbitfs' and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key),componentSlug,productFamily]);
   if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404};
   const license=result.rows[0];const expired=Boolean(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now());const validLicense=license.product_status==='active'&&license.status==='active'&&!expired;
   if(expired&&license.status==='active')await pool.query(`update licenses set status='expired' where id=$1 and status='active'`,[license.id]);
