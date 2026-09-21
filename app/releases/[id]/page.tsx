@@ -23,7 +23,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
   const isBase = release.release_type === 'base';
   const technicalReady = validation.status === 'passed' && release.review_status === 'approved';
   const pipeline = [
-    ['Intake', Boolean(release.source_sha && release.artifact_url), 'Package received from release worker'],
+    ['Intake', Boolean(release.source_sha && release.artifact_name), 'Package received from release worker'],
     ['Validation', validation.status === 'passed', validation.status === 'passed' ? 'All technical checks passed' : 'Run validation'],
     ['Approval', release.review_status === 'approved', release.review_status === 'approved' ? 'Technical decision recorded' : 'Awaiting operator decision'],
     ['Billing Store', technicalReady, technicalReady ? 'Candidate is ready for final publication' : 'Locked until technical approval'],
@@ -49,7 +49,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
       </section>
 
       <div className="detail-grid">
-        <section className="card operation-card"><div className="card-heading"><div><div className="eyebrow">Operator actions</div><h2>Control this release</h2><p className="muted">Every decision is permission-checked and written to the audit trail.</p></div></div><ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} archived={Boolean(release.archived_at)} channels={channels} /></section>
+        <section className="card operation-card"><div className="card-heading"><div><div className="eyebrow">Operator actions</div><h2>Control this release</h2><p className="muted">Every decision is permission-checked and written to the audit trail.</p></div></div><ReleaseControls id={release.id} reviewStatus={release.review_status} validationStatus={validation.status || 'not run'} published={release.status === 'published'} archived={Boolean(release.archived_at)} channels={channels} releaseType={release.release_type} /></section>
 
         <section className="card validation-card"><div className="card-heading"><div><div className="eyebrow">Technical report</div><h2>Validation checks</h2></div><span className={validation.status === 'passed' ? 'badge ok' : validation.status === 'failed' ? 'badge off' : 'badge'}>{passed}/{checks.length} passed</span></div>{validation.checked_at && <p className="muted validation-time">Last checked {new Date(validation.checked_at).toLocaleString()}</p>}{checks.length ? <div className="check-list">{checks.map((c:any,i:number)=><div className={c.ok ? 'check-row ok' : 'check-row fail'} key={c.key || i}><span className="check-symbol">{c.ok ? '✓' : '×'}</span><div className="check-content"><strong>{c.key || 'check'}</strong><div>{c.message}</div>{!c.ok && <div className="fix-box"><b>Fix:</b> {c.fix || 'Inspect the failed release/build condition, correct it at the source, then run validation again.'}</div>}</div></div>)}</div> : <div className="empty-state"><strong>Validation has not run</strong><span>Run the full validation from Operator actions.</span></div>}</section>
       </div>
