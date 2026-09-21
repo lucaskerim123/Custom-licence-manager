@@ -100,6 +100,33 @@ export async function promoteRelease(id:string,targetChannel:string,actorUserId?
  await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.promote','release',$3,$4)`,[actorUserId??null,actor??'admin',row.id,JSON.stringify({from_release_id:source.id,from_channel:source.channel,to_channel:channel.channel,version:row.version})]);
  return validateRelease(row.id,actorUserId??null,actor??'admin');
 }
+export async function withdrawRelease(id:string,actorUserId?:string|null,actor?:string){
+ const pool=db();
+ const row=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];
+ if(!row)return null;
+ if(row.status!=='published')throw new Error('Only a published release can be withdrawn.');
+ const result=await pool.query("update releases set status='disabled' where id=$1 and status='published' returning *",[id]);
+ if(!result.rows[0])throw new Error('Release could not be withdrawn.');
+ await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.withdraw','release',$3,$4)",[actorUserId??null,actor??'admin',id,JSON.stringify({version:row.version,channel:row.channel,release_type:row.release_type})]);
+ return result.rows[0];
+}
+
+export async function rollbackBaseRelease(id:string,actorUserId?:string|null,actor?:string){
+ const pool=db();
+ const current=(await pool.query('select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1',[id])).rows[0];
+ if(!current)return null;
+ if(current.release_type!=='base')throw new Error('Rollback is currently available for Base deployments only.');
+ if(current.status!=='published')throw new Error('Only a published Base deployment can be rolled back.');
+ const previous=(await pool.query("select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.product_id=$1 and r.channel=$2 and r.release_type='base' and r.status='published' and r.id<>$3 and r.published_at < $4 order by r.published_at desc nulls last,r.created_at desc limit 1",[current.product_id,current.channel,id,current.published_at])).rows[0];
+ if(!previous)throw new Error('No previous published Base deployment is available for rollback.');
+ const revision=Number((await pool.query('select coalesce(max(revision),0)::int revision from releases where product_id=$1 and channel=$2 and version=$3 and release_type=\'base\'',[previous.product_id,previous.channel,previous.version])).rows[0].revision||0)+1;
+ const manifest={...(previous.manifest||{}),rollback_from:{release_id:current.id,version:current.version,created_at:new Date().toISOString()}};
+ const result=await pool.query("insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,'base',$4,$5,$6,$7,$8,'draft',null,'pending','not_started',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *",[previous.product_id,previous.channel,previous.version,previous.source_repo,previous.source_ref,previous.artifact_url,previous.checksum,previous.notes,previous.source_sha,previous.artifact_name,previous.artifact_repo,previous.artifact_run_id,previous.vercel_ready,previous.supabase_ready,previous.customer_publication_repo,manifest,revision,current.id]);
+ const row=result.rows[0];
+ await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.rollback.prepare','release',$3,$4)",[actorUserId??null,actor??'admin',row.id,JSON.stringify({from_release_id:current.id,from_version:current.version,to_version:row.version,source_release_id:previous.id})]);
+ return validateRelease(row.id,actorUserId??null,actor??'admin');
+}
+
 export async function archiveRelease(id:string, archived:boolean, actorUserId?:string|null, actor?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(!archived&&row.status==='published')throw new Error('Published releases cannot be restored into the active deployment queue.');const result=await pool.query(`update releases set archived_at=$2,archived_by=$3 where id=$1 returning *`,[id,archived?new Date():null,archived?actorUserId??null:null]);await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[actorUserId??null,actor??'admin',archived?'release.archive':'release.restore',id,JSON.stringify({archived})]);return result.rows[0]??null;}
 export async function deleteRelease(id:string, actorUserId?:string|null, actor?:string){const pool=db();const row=(await pool.query('select * from releases where id=$1',[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases cannot be deleted; archive or withdraw them first.');if(!row.archived_at)throw new Error('Release must be archived before it can be permanently deleted.');await pool.query('delete from releases where id=$1',[id]);await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.delete','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({version:row.version,release_type:row.release_type})]);return row;}
 export async function updateReleasePresentation(id:string,input:any,actorUserId?:string|null,actor?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');const oldManifest=row.manifest||{};const nextManifest={...oldManifest};for(const [key,value] of Object.entries(input||{})){if(['title','description','customer_notes','internal_notes','severity','required','rollout','minimum_version','rollback_version'].includes(key))nextManifest[key]=value;}const notes=input?.changelog!==undefined?String(input.changelog||''):row.notes;const result=await pool.query(`update releases set notes=$2,manifest=$3 where id=$1 returning *`,[id,notes,nextManifest]);await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.presentation.update','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({fields:Object.keys(input||{})})]);return result.rows[0]??null;}
