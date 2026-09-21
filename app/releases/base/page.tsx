@@ -103,7 +103,7 @@ export default async function BaseDeployment() {
                 <div className="release-meta release-meta-base">
                   <div><small className="muted">Source</small><strong>{r.source_repo || '—'}</strong><span>{r.source_ref || '—'}</span></div>
                   <div><small className="muted">Source commit</small><strong className="mono">{r.source_sha || '—'}</strong></div>
-                  <div><small className="muted">Artifact</small><strong>{r.artifact_name || '—'}</strong><span>{r.artifact_url ? 'Artifact supplied' : 'Missing artifact URL'}</span></div>
+                  <div><small className="muted">Artifact</small><strong>{r.artifact_name || '—'}</strong><span>{r.artifact_url ? 'Legacy artifact URL supplied' : 'GitHub release asset reference'}</span></div>
                   <div><small className="muted">Validation</small><strong>{v.checks.filter((c: any) => c.ok).length}/{v.checks.length || 0} checks</strong><span>{v.status === 'passed' ? 'Technically valid' : v.status === 'failed' ? 'Fix required' : 'Not completed'}</span></div>
                 </div>
                 {v.status === 'failed' && <div className="release-blocker"><strong>Technical blocker</strong><span>{v.checks.find((c: any) => !c.ok)?.message || 'One or more validation checks failed.'}</span><Link href={'/releases/' + r.id}>Open validation report →</Link></div>}
