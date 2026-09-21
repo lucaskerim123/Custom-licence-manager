@@ -31,9 +31,10 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const key = String(body?.license_key ?? body?.licenseKey ?? '').trim();
   const product = String(body?.product ?? body?.product_code ?? '').trim().toLowerCase();
+  const component = String(body?.component ?? body?.component_code ?? '').trim().toLowerCase();
   const installationId = String(body?.installation_id ?? body?.installationId ?? '').trim();
 
-  if (!key || !product) {
+  if (!key || !product || (product === 'orbitfs' && !component)) {
     return NextResponse.json({ valid: false, code: 'INVALID_REQUEST' }, { status: 400 });
   }
 
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
     const result = await validateLicense({
       key,
       productSlug: product,
+      componentSlug: component || undefined,
       installationId: installationId || undefined,
       productVersion:
         body?.product_version ?? body?.productVersion
