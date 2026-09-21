@@ -45,7 +45,7 @@ export default async function ReleaseDetail({ params }: { params: Promise<{ id: 
 
       <section className="card release-gate">
         <div className="gate-heading"><div><div className="eyebrow">Authority gate</div><h2>{technicalReady ? 'Technically cleared for Billing Store' : validation.status === 'failed' ? 'Release is blocked by validation' : 'Release is still in technical review'}</h2><p className="muted">{technicalReady ? 'The License Manager has completed its job. Billing Store can now perform the final customer-facing publication review.' : 'The License Manager owns the technical decision. Fix failures, validate again, then approve the candidate.'}</p></div><div className={technicalReady ? 'gate-icon gate-ok' : validation.status === 'failed' ? 'gate-icon gate-fail' : 'gate-icon'}>{technicalReady ? '✓' : validation.status === 'failed' ? '!' : '…'}</div></div>
-        <div className="release-detail-pipeline">{pipeline.map(([label, done, sub], i) => <div className={done ? 'pipeline-node done' : 'pipeline-node'} key={label}><span>{done ? '✓' : String(i + 1).padStart(2, '0')}</span><div><strong>{label}</strong><small>{sub}</small></div></div>)}</div>
+        <div className="release-detail-pipeline">{pipeline.map(([label, done, sub], i) => <div className={done ? 'pipeline-node done' : 'pipeline-node'} key={String(label)}><span>{done ? '✓' : String(i + 1).padStart(2, '0')}</span><div><strong>{label}</strong><small>{sub}</small></div></div>)}</div>
       </section>
 
       <div className="detail-grid">
