@@ -19,6 +19,7 @@ export default function ReleaseControls({
   published,
   archived,
   channels,
+  releaseType,
 }: {
   id: string;
   reviewStatus: string;
@@ -26,6 +27,7 @@ export default function ReleaseControls({
   published: boolean;
   archived: boolean;
   channels: string[];
+  releaseType: string;
 }) {
   const [state, action, pending] = useActionState(runReleaseAction, initial);
   const canReview = !published && reviewStatus === 'pending';
@@ -69,6 +71,21 @@ export default function ReleaseControls({
             Reject
           </button>
         </form>
+      )}
+
+      {published && releaseType === 'base' && (
+        <>
+          <form action={action} onSubmit={(e) => { if (!confirm('Withdraw this published Base deployment? It will stop being active and can then be archived/deleted.')) e.preventDefault(); }}>
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="action" value="withdraw" />
+            <button className="button danger" disabled={pending}>Withdraw deployment</button>
+          </form>
+          <form action={action} onSubmit={(e) => { if (!confirm('Prepare a rollback to the previous published Base deployment?')) e.preventDefault(); }}>
+            <input type="hidden" name="id" value={id} />
+            <input type="hidden" name="action" value="rollback" />
+            <button className="button secondary" disabled={pending}>Prepare rollback</button>
+          </form>
+        </>
       )}
 
       {!archived && (
