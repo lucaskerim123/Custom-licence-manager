@@ -2,6 +2,33 @@
 create or replace function prevent_published_release_mutation() returns trigger language plpgsql as $$
 begin
   if old.status='published' then
+    -- Published releases remain immutable, except an explicit withdrawal.
+    -- Withdrawal only changes the public status from published to disabled.
+    if new.status='disabled'
+      and new.product_id is not distinct from old.product_id
+      and new.channel is not distinct from old.channel
+      and new.version is not distinct from old.version
+      and new.release_type is not distinct from old.release_type
+      and new.source_repo is not distinct from old.source_repo
+      and new.source_ref is not distinct from old.source_ref
+      and new.artifact_url is not distinct from old.artifact_url
+      and new.checksum is not distinct from old.checksum
+      and new.review_status is not distinct from old.review_status
+      and new.deployment_status is not distinct from old.deployment_status
+      and new.source_sha is not distinct from old.source_sha
+      and new.artifact_name is not distinct from old.artifact_name
+      and new.artifact_repo is not distinct from old.artifact_repo
+      and new.artifact_run_id is not distinct from old.artifact_run_id
+      and new.vercel_ready is not distinct from old.vercel_ready
+      and new.supabase_ready is not distinct from old.supabase_ready
+      and new.customer_publication_repo is not distinct from old.customer_publication_repo
+      and new.notes is not distinct from old.notes
+      and new.manifest is not distinct from old.manifest
+      and new.revision is not distinct from old.revision
+      and new.supersedes_release_id is not distinct from old.supersedes_release_id
+      and new.published_at is not distinct from old.published_at then
+      return new;
+    end if;
     if new.product_id is distinct from old.product_id
       or new.channel is distinct from old.channel
       or new.version is distinct from old.version
