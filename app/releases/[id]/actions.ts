@@ -6,6 +6,8 @@ import {
   archiveRelease,
   deleteRelease,
   promoteRelease,
+  rollbackBaseRelease,
+  withdrawRelease,
   setReleaseReview,
   validateRelease,
 } from '../../../lib/core/releases';
@@ -145,6 +147,30 @@ export async function runReleaseAction(
             : 'Release promoted to ' +
               targetChannel +
               ' as a new technical-review candidate. Validation requires attention.',
+        checks,
+        checkedAt: validation.checked_at,
+      };
+    }
+
+    if (action === 'withdraw') {
+      const row = await withdrawRelease(id, user.id, user.email);
+      if (!row) return { ok: false, message: 'Release not found.' };
+      refreshRelease(id);
+      return { ok: true, message: 'Published release withdrawn. It is no longer active and can now be archived and permanently deleted.' };
+    }
+
+    if (action === 'rollback') {
+      const row = await rollbackBaseRelease(id, user.id, user.email);
+      if (!row) return { ok: false, message: 'Rollback candidate could not be created.' };
+      refreshRelease(id);
+      refreshRelease(row.id);
+      const validation = row.manifest?.validation || {};
+      const checks = Array.isArray(validation.checks) ? validation.checks : [];
+      return {
+        ok: validation.status === 'passed',
+        message: validation.status === 'passed'
+          ? 'Rollback candidate created and validated. Approve it to return the previous Base deployment to the publication queue.'
+          : 'Rollback candidate created, but validation needs attention before approval.',
         checks,
         checkedAt: validation.checked_at,
       };
