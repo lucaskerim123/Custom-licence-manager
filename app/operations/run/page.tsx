@@ -59,7 +59,7 @@ export default function RunPage(){
         <div className={styles.jobs}>{(d?.jobs||[]).map((job:any)=><article className={styles.job} key={job.id}>
          <div className={styles.jobHead}><div><strong>{job.name}</strong><span>{job.status} · {job.conclusion||'in progress'} · {duration(job.started_at,job.completed_at)}</span></div><span className={styles.stepBadge}>{job.conclusion==='success'?'PASSED':job.conclusion==='failure'?'FAILED':String(job.status).toUpperCase()}</span></div>
          <div className={styles.steps}>{(job.steps||[]).map((step:any)=><div className={styles.step} key={step.name}><span>{step.conclusion==='success'?'✓':step.conclusion==='failure'?'✕':step.status==='in_progress'?'●':'○'}</span><div><b>{step.name}</b><small>{step.status}{step.conclusion?' · '+step.conclusion:''}</small></div></div>)}</div>
-         {job.logTail&&<details className={styles.logDetails} open={job.conclusion==='failure'}><summary>{job.conclusion==='failure'?'Failed output':'Console output'}</summary><pre className={styles.log}>{job.logTail||'Waiting for GitHub to expose console output for this job…\nLive step status is available above.'}</pre></details>}
+         <details className={styles.logDetails} open={job.conclusion==='failure'}><summary>{job.conclusion==='failure'?'Failed output':'Console output'} · {job.status==='completed'?'final':'live'}</summary><pre className={styles.log}>{job.logTail||'Waiting for GitHub to expose console output for this job…\nLive step status is available above. This panel refreshes automatically while the workflow is running.'}</pre></details>
         </article>)}</div>
        </div>}
       </section>}
