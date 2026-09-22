@@ -5,6 +5,7 @@ import {validateLicense} from '../../../lib/core/licenses';
 
 export const runtime='nodejs';
 
+function githubAssetUrl(value:string){try{const u=new URL(value);if(u.hostname!=='api.github.com')return null;const m=u.pathname.match(/^\/repos\/([^/]+)\/([^/]+)\/releases\/assets\/(\d+)$/);return m?{owner:m[1],repo:m[2],assetId:m[3]}:null;}catch{return null;}}
 function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
 function telemetry(body:any){const source=body?.telemetry&&typeof body.telemetry==='object'?body.telemetry:{};const allowed=['hostname','platform','architecture','client','clientVersion','provider','region','components'];return Object.fromEntries(allowed.filter(k=>source[k]!==undefined&&source[k]!==null&&source[k]!=='').map(k=>[k,source[k]]));}
 
@@ -39,7 +40,10 @@ export async function GET(request:Request){
     if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor});
 
     if(!release.artifact_url)return NextResponse.json({ok:false,code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
-    const response=await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream',authorization:request.headers.get('authorization')||''},cache:'no-store'});
+    const github=githubAssetUrl(String(release.artifact_url));
+    const response=github
+      ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{headers:{accept:'application/octet-stream',authorization:'Bearer '+String(process.env.GITHUB_RELEASE_TOKEN||'').trim(),'x-github-api-version':'2026-03-10','user-agent':'OrbitFS-License-Master'},cache:'no-store',redirect:'follow'})
+      : await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
     if(!response.ok)return NextResponse.json({ok:false,code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
     return new Response(await response.arrayBuffer(),{status:200,headers:{'content-type':response.headers.get('content-type')||'application/octet-stream','content-disposition':response.headers.get('content-disposition')||`attachment; filename="${release.artifact_name||'orbitfs-release'}"`,'cache-control':'private, no-store'}});
   }catch(error:any){return NextResponse.json({ok:false,code:String(error?.code||'UPDATER_ERROR'),error:String(error?.message||'Updater request failed')},{status:Number(error?.status||503)})}
