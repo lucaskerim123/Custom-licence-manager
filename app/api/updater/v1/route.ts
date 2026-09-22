@@ -37,7 +37,7 @@ export async function GET(request:Request){
     const manifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
     const descriptor={id:release.id,version:release.version,product:release.product,releaseType:release.release_type,channel:release.channel,sourceRepo:release.source_repo,sourceRef:release.source_ref,sourceCommit:release.source_sha,checksum:release.checksum,artifactName:release.artifact_name,fileCount:Number(manifest.fileCount||0),components:Array.isArray(manifest.components)?manifest.components:[],minimumBaseVersion:manifest.minimumBaseVersion||manifest.minimum_version||null,minimumEngineDeployerProtocol:Number(manifest.minimumEngineDeployerProtocol||1),checkpointRequired:manifest.checkpointRequired!==false,manifest,artifactUrl:`${new URL(request.url).origin}/api/updater/v1?release_id=${encodeURIComponent(release.id)}&download=1`};
 
-    if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor});
+    if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor,releases:[descriptor]});
 
     if(!release.artifact_url)return NextResponse.json({ok:false,code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
     const github=githubAssetUrl(String(release.artifact_url));
