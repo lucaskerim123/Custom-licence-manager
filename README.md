@@ -61,7 +61,7 @@ Every integration endpoint except health requires:
 
 ### License issuance
 
-`POST /api/v1/licenses`
+`POST /api/v1/license`
 
 ```json
 {
@@ -77,7 +77,7 @@ The response contains the plaintext `license_key` once. The caller must securely
 
 ### License validation
 
-`POST /api/v1/licenses/validate`
+`POST /api/v1/license/validate`
 
 ```json
 {
