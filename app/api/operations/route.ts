@@ -27,6 +27,10 @@ async function github(path: string, init: RequestInit = {}) {
 function cleanRun(run: any) {
   return run ? { id: run.id, status: run.status, conclusion: run.conclusion, run_number: run.run_number, head_sha: run.head_sha, created_at: run.created_at, updated_at: run.updated_at, html_url: run.html_url, name: run.name } : null;
 }
+async function currentMainSha(cfg: (typeof REPOS)[keyof typeof REPOS]) {
+  const ref = await github('/repos/' + cfg.repo + '/git/ref/heads/main');
+  return String(ref.object?.sha || '');
+}
 async function findStartedRun(cfg: (typeof REPOS)[keyof typeof REPOS], workflow: string, startedAt: number) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const runs = await github('/repos/' + cfg.repo + '/actions/workflows/' + workflow + '/runs?branch=main&per_page=5');
@@ -40,9 +44,13 @@ export async function GET() {
   try {
     await authorize();
     const entries = await Promise.all(Object.entries(REPOS).map(async ([key, cfg]) => {
-      const runs = await github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.ci + '/runs?branch=main&per_page=1');
-      const deploys = await github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.deploy + '/runs?branch=main&per_page=1');
-      return [key, { ...cfg, ci: cleanRun(runs.workflow_runs?.[0]), deploy: cleanRun(deploys.workflow_runs?.[0]) }] as const;
+      const [mainSha, runs, deploys] = await Promise.all([
+        currentMainSha(cfg),
+        github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.ci + '/runs?branch=main&per_page=1'),
+        github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.deploy + '/runs?branch=main&per_page=1'),
+      ]);
+      const ci = runs.workflow_runs?.[0];
+      return [key, { ...cfg, mainSha, ci: cleanRun(ci), deploy: cleanRun(deploys.workflow_runs?.[0]), ciMatchesMain: !!ci && ci.head_sha === mainSha }] as const;
     }));
     return NextResponse.json({ jobs: Object.fromEntries(entries) });
   } catch (error: any) {
@@ -62,8 +70,9 @@ export async function POST(request: Request) {
     if (action === 'deploy') {
       const latest = await github('/repos/' + cfg.repo + '/actions/workflows/' + cfg.ci + '/runs?branch=main&per_page=1');
       const latestRun = latest.workflow_runs?.[0];
-      if (!latestRun || latestRun.status !== 'completed' || latestRun.conclusion !== 'success') {
-        return NextResponse.json({ error: 'Deploy is blocked until the latest CI/preflight run on main passes. Use OVERRIDE DEPLOY for an explicit one-shot manual override.' }, { status: 409 });
+      const mainSha = await currentMainSha(cfg);
+      if (!latestRun || latestRun.status !== 'completed' || latestRun.conclusion !== 'success' || latestRun.head_sha !== mainSha) {
+        return NextResponse.json({ error: 'Deploy is blocked until the current main commit has a successful CI/preflight run. A CI run for an older commit cannot be reused.' }, { status: 409 });
       }
     }
     const startedAt = Date.now();
