@@ -7,7 +7,11 @@ export async function GET(request:Request){
   const auth=await integrationAuthorized(request,'license.manage');
   if(!auth)return NextResponse.json({error:'UNAUTHORIZED',code:'UNAUTHORIZED'},{status:401});
   const rows=(await db().query("select l.id,l.license_key_last4,l.product_id,l.customer_external_id,l.external_reference,l.status,l.issued_at,l.expires_at,l.metadata,l.customer_override,p.slug product_code,p.name product from licenses l join products p on p.id=l.product_id order by l.issued_at desc")).rows;
-  return NextResponse.json({licenses:rows});
+  const ids=rows.map((row:any)=>String(row.id)).filter(Boolean);
+  const activations=ids.length?(await db().query("select id,license_id,installation_id,status,product_version,first_seen_at,last_seen_at,last_provider,last_region,last_platform,last_architecture,last_client,last_client_version,last_deployment_id,last_deployment_url,last_deployment_status,last_operation,deployment_count,current_components from activations where license_id=any($1::uuid[]) order by last_seen_at desc nulls last",[ids])).rows:[];
+  const grouped=new Map<string,any[]>();
+  for(const activation of activations){const key=String(activation.license_id);const list=grouped.get(key)||[];list.push(activation);grouped.set(key,list);}
+  return NextResponse.json({licenses:rows.map((row:any)=>({...row,activations:grouped.get(String(row.id))||[]}))});
 }
 
 export async function POST(request:Request){
