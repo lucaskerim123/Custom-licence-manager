@@ -9,17 +9,22 @@ Both hostnames must point to the same Vercel deployment of `Custom-licence-manag
 
 ## API contract
 
-The external API is rooted at `/api` and the current runtime endpoints include:
+The external API is rooted at `/api` and all external integration endpoints use the versioned `/api/v1` namespace:
 
-- `GET /api/v1/license/health`
-- `POST /api/v1/license`
-- `POST /api/v1/license/validate` — public license validation (license key is the client credential)
-- `POST /api/v1/license/validate` — internal/integration-authenticated validation endpoint
-- `POST /api/v1/license/{id}/control`
-- `GET /api/v1/products`
-- `GET /api/v1/license`
-- `GET /api/health`
-- release and deployment endpoints under `/api/*`
+- `GET /api/v1/license/health` — authenticated/internal health
+- `POST /api/v1/license` — issue a license
+- `POST /api/v1/license/validate` — public installed-product license validation
+- `POST /api/v1/license/{id}/control` — license lifecycle control
+- `GET /api/v1/products` — product catalogue
+- `GET /api/v1/license` — authenticated license registry
+- `GET /api/v1/releases` / `POST /api/v1/releases` — release intake/distribution
+- `GET|POST /api/v1/releases/{id}` — release operations
+- `GET /api/v1/releases/{id}/artifact` — release artifact
+- `POST /api/v1/releases/{id}/validate` — release validation
+- `GET|POST /api/v1/updater` — customer update/base release retrieval
+- `POST /api/v1/deployer` — deployment authorization and deployment telemetry
+
+There are also internal License Manager admin/auth/operations routes under `/api/*`. Those are application-internal control-plane endpoints, not the external License Master integration contract. They must not be confused with or substituted for the versioned public integration API.
 
 The admin UI is not the API authority URL. Billing Store, OrbitFS Base/license controller, release/deployer clients, and other external systems should use `https://incendiarynetworks.cc/api` as their License Master API base. The browser-facing License Master administration interface should use `https://panel.incendiarynetworks.cc`.
 
