@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader';
 export const dynamic='force-dynamic';
 const blocks=[
  ['Authentication',`Authorization: Bearer INTEGRATION_API_TOKEN`,'Keep integration credentials private and use HTTPS.'],
- ['Issue a license',`POST /api/v1/licenses
+ ['Issue a license',`POST /api/v1/license
 
 {
   "product": "orbitfs",
@@ -15,7 +15,7 @@ const blocks=[
 }
 
 Response: { id, license_key, status, expires_at }`,'License issuance remains inside the License Manager authority.'],
- ['Installed-product validation',`POST /api/v1/licenses/validate
+ ['Installed-product validation',`POST /api/v1/license/validate
 
 {
   "license_key": "LIC-...",
@@ -23,7 +23,7 @@ Response: { id, license_key, status, expires_at }`,'License issuance remains ins
   "installation_id": "machine-123",
   "product_version": "2.0.0"
 }`,'Validation and installation binding are authoritative here.'],
- ['Base deployment',`GET /api/v1/deployment/base?product=orbitfs&channel=stable`,'Returns the latest published base release approved by the authority.'],
+ ['Base deployment',`GET /api/v1/updater?product=orbitfs_base&channel=stable&type=base`,'Returns the latest published base release approved by the authority.'],
  ['Release intake / distribution',`GET /api/v1/releases?product=orbitfs&channel=stable&type=update
 GET /api/v1/releases?product=orbitfs&channel=stable&type=base
 POST /api/v1/releases`,'Release builders submit candidates. Customer-facing publication is a separate Billing Store gate.']
