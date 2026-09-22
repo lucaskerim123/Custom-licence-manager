@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
-import {integrationAuthorized} from '../../../lib/auth';
-import {db} from '../../../lib/db';
-import {validateLicense} from '../../../lib/core/licenses';
+import {integrationAuthorized} from '../../../../lib/auth';
+import {db} from '../../../../lib/db';
+import {validateLicense} from '../../../../lib/core/licenses';
 
 export const runtime='nodejs';
 
