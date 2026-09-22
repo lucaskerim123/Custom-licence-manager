@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateLicense, recordInstallationCheckIn } from '../../../../../../lib/core/licenses';
+import { validateLicense, recordInstallationCheckIn } from '../../../../../lib/core/licenses';
 
 function requestIp(request: Request) {
   return request.headers.get('x-real-ip')?.trim() || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null;
