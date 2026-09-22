@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
-import {integrationAuthorized} from '../../../lib/auth';
-import {db} from '../../../lib/db';
-import {recordInstallationCheckIn} from '../../../lib/core/licenses';
+import {integrationAuthorized} from '../../../../lib/auth';
+import {db} from '../../../../lib/db';
+import {recordInstallationCheckIn} from '../../../../lib/core/licenses';
 
 function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
 
