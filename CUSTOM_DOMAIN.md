@@ -16,7 +16,7 @@ The external API is rooted at `/api` and the current runtime endpoints include:
 - `POST /api/v1/license/validate` — public license validation (license key is the client credential)
 - `POST /api/v1/license/validate` — internal/integration-authenticated validation endpoint
 - `POST /api/v1/license/{id}/control`
-- `GET /api/products`
+- `GET /api/v1/products`
 - `GET /api/v1/license`
 - `GET /api/health`
 - release and deployment endpoints under `/api/*`
