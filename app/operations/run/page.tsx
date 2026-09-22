@@ -35,7 +35,7 @@ export default function RunPage(){
  }
  async function copyPrompt(prompt:string){if(!prompt)return;await navigator.clipboard.writeText(prompt)}
 
- return <main className={styles.main}>
+ return <div className={styles.content}>
   <header className={styles.top}>
    <div><div className={styles.eyebrow}>LICENSE MANAGER / OPERATIONS</div><h1>Operations</h1><p className={styles.muted}>Production control for both systems. Scan and prepare the exact main commit, monitor it live, then deploy manually.</p></div>
    <div className={styles.liveHeader}><span className={styles.liveDot}/>{live?'LIVE MONITORING':'STATUS MONITOR'}<small>{lastRefresh?'Updated '+time(lastRefresh):'Connecting…'}</small></div>
