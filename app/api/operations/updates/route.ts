@@ -42,7 +42,7 @@ async function scan(key:keyof typeof REPOS){
      github('/repos/'+cfg.repo+'/git/trees/'+currentTreeSha+'?recursive=1')
    ]);
    if(baseTree.truncated||currentTree.truncated)completeFileScan=false;
-   const baseMap=new Map((baseTree.tree||[]).filter((x:any)=>x.type==='blob').map((x:any)=>[x.path,x]));
+   const baseMap=new Map((baseTree.tree||[]).filter((x:any)=>x.type!=='tree').map((x:any)=>[x.path,x]));
    const currentMap=new Map((currentTree.tree||[]).filter((x:any)=>x.type==='blob').map((x:any)=>[x.path,x]));
    const paths=new Set([...baseMap.keys(),...currentMap.keys()]);
    for(const path of paths){
