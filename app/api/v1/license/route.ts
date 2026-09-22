@@ -4,7 +4,7 @@ import {issueLicense} from '../../../../lib/core/licenses';
 import {db} from '../../../../lib/db';
 
 export async function GET(request:Request){
-  const auth=await integrationAuthorized(request,'license.read');
+  const auth=await integrationAuthorized(request,'license.manage');
   if(!auth)return NextResponse.json({error:'UNAUTHORIZED',code:'UNAUTHORIZED'},{status:401});
   const rows=(await db().query("select l.id,l.license_key_last4,l.product_id,l.customer_external_id,l.external_reference,l.status,l.issued_at,l.expires_at,l.metadata,l.customer_override,p.slug product_code,p.name product from licenses l join products p on p.id=l.product_id order by l.issued_at desc")).rows;
   return NextResponse.json({licenses:rows});
