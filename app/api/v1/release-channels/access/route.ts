@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { integrationAuthorized } from '../../../../../../lib/auth';
-import { db } from '../../../../../../lib/db';
+import { integrationAuthorized } from '../../../../../lib/auth';
+import { db } from '../../../../../lib/db';
 
 export async function POST(request: Request) {
   const auth = await integrationAuthorized(request, 'releases.write');
