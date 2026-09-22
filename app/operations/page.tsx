@@ -1,2 +1,2 @@
-import OperationsMenu from '../components/OperationsMenu';
-export default function OperationsPage(){return <OperationsMenu onClose={()=>{}}/>}
+import {LegacyOperationsMenu} from '../components/OperationsMenu';
+export default function OperationsPage(){return <LegacyOperationsMenu onClose={()=>{}}/>}
