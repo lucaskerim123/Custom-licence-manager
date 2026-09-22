@@ -46,6 +46,13 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   if(expired&&license.status==='active')await pool.query(`update licenses set status='expired' where id=$1 and status='active'`,[license.id]);
   let installationValid=true;
   if(validLicense&&input.installationId){
+    const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'?license.metadata.license_policy:{};
+    const maxInstallations=Number(policy.max_installations||0);
+    if(maxInstallations>0){
+      const count=(await pool.query("select count(*)::int count from activations where license_id=$1 and status in ('active','locked')",[license.id])).rows[0]?.count||0;
+      const already=(await pool.query("select 1 from activations where license_id=$1 and installation_id=$2 limit 1",[license.id,input.installationId])).rowCount>0;
+      if(!already&&Number(count)>=maxInstallations)return{valid:false,code:'INSTALLATION_LIMIT_REACHED' as const,status:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id};
+    }
     const existing=(await pool.query(`select status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
     installationValid=!existing||existing.status==='active';
     if(installationValid){
