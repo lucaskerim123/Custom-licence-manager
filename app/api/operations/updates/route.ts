@@ -43,7 +43,7 @@ async function scan(key:keyof typeof REPOS){
    ]);
    if(baseTree.truncated||currentTree.truncated)completeFileScan=false;
    const baseMap=new Map((baseTree.tree||[]).filter((x:any)=>x.type!=='tree').map((x:any)=>[x.path,x]));
-   const currentMap=new Map((currentTree.tree||[]).filter((x:any)=>x.type==='blob').map((x:any)=>[x.path,x]));
+   const currentMap=new Map((currentTree.tree||[]).filter((x:any)=>x.type!=='tree').map((x:any)=>[x.path,x]));
    const paths=new Set([...baseMap.keys(),...currentMap.keys()]);
    for(const path of paths){
      const before:any=baseMap.get(path),after:any=currentMap.get(path);
