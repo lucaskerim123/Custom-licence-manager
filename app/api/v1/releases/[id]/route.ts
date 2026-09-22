@@ -25,6 +25,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
   try{
     if(action==='publish')return NextResponse.json({release:await publishRelease(id,undefined,`api:${auth.name}`)});
     if(action==='withdraw')return NextResponse.json({release:await withdrawRelease(id,undefined,`api:${auth.name}`)});
+    if(action==='disable'||action==='pause'){const row=(await db().query("select * from releases where id=$1 limit 1",[id])).rows[0];if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});const release=(await db().query("update releases set status='disabled' where id=$1 returning *",[id])).rows[0];await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.pause','release',$2,$3)",["api:"+auth.name,id,JSON.stringify({previous_status:row.status})]);return NextResponse.json({release});}
     if(action==='archive')return NextResponse.json({release:await archiveRelease(id,true,undefined,`api:${auth.name}`)});
     if(action==='restore')return NextResponse.json({release:await archiveRelease(id,false,undefined,`api:${auth.name}`)});
     if(action==='delete')return NextResponse.json({release:await deleteRelease(id,undefined,`api:${auth.name}`)});
