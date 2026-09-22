@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { validateLicense, recordInstallationCheckIn } from '../../../../../lib/core/licenses';
 
@@ -123,7 +124,9 @@ export async function POST(request: Request) {
       },
       { status: result.status },
     );
-  } catch {
-    return NextResponse.json({ valid: false, code: 'SERVER_ERROR' }, { status: 500 });
+  } catch (error: any) {
+    const requestId = crypto.randomUUID();
+    console.error('license validation failed', { requestId, error });
+    return NextResponse.json({ valid: false, code: 'SERVER_ERROR', request_id: requestId }, { status: 500 });
   }
 }
