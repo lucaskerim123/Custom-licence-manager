@@ -21,8 +21,8 @@ export default function RunPage(){
  },[]);
  useEffect(()=>{load();const t=setInterval(load,5000);return()=>clearInterval(t)},[load]);
 
- async function action(system:string,kind:'ci'|'deploy'){
-  if(kind==='deploy'&&!window.confirm('Deploy '+systems.find(s=>s.key===system)?.label+'?'))return;
+ async function action(system:string,kind:'ci'|'deploy'|'override-deploy'){
+  if((kind==='deploy'||kind==='override-deploy')&&!window.confirm((kind==='override-deploy'?'OVERRIDE DEPLOY ':'Deploy ')+systems.find(s=>s.key===system)?.label+'?'))return;
   setBusy(system+kind);setError('');
   try{
    const r=await fetch('/api/operations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({job:system,action:kind})});
@@ -45,12 +45,12 @@ export default function RunPage(){
     return <article className={styles.system} key={s.key}>
      <div className={styles.systemHead}><div><strong>{s.label}</strong><code>{s.repo}</code></div><span className={styles.badge}>{status(run)}</span></div>
      <div className={styles.row}><div><strong>Scan &amp; Prepare</strong><span>{run?'#'+run.run_number+' · '+time(run.updated_at)+' · '+run.head_sha.slice(0,12):'No production gate run yet'}</span></div><button onClick={()=>action(s.key,'ci')} disabled={!!busy}>{busy===s.key+'ci'?'Scanning…':'Scan & Prepare'}</button></div>
-     <div className={styles.row}><div><strong>Production Deployment</strong><span>{passed?'Ready — exact commit passed Scan & Prepare.':'Blocked until Scan & Prepare passes for the current main commit.'}</span></div><button className={styles.deploy} onClick={()=>action(s.key,'deploy')} disabled={!!busy||!passed}>{busy===s.key+'deploy'?'Deploying…':'Deploy'}</button></div>
+     <div className={styles.row}><div><strong>Production Deployment</strong><span>{passed?'Ready — exact commit passed Scan & Prepare.':'Blocked until Scan & Prepare passes for the current main commit.'}</span></div><div className={styles.actions}><button className={styles.deploy} onClick={()=>action(s.key,'deploy')} disabled={!!busy||!passed}>{busy===s.key+'deploy'?'Deploying…':'Deploy'}</button><button onClick={()=>action(s.key,'override-deploy')} disabled={!!busy}>{busy===s.key+'override-deploy'?'Starting…':'OVERRIDE DEPLOY'}</button></div></div>
      {run&&<section className={styles.card}><div className={styles.sectionHead}><div><h2>{failed?'Failed scan output':'Latest job output'}</h2><p className={styles.muted}>{run.status==='completed'?'Final workflow output.':'Live output — refreshing every 5 seconds.'}</p></div></div>
       <div className={styles.meta}><div><span>Run</span><strong>#{run.run_number}</strong></div><div><span>Commit</span><strong>{run.head_sha}</strong></div><div><span>Updated</span><strong>{time(run.updated_at)}</strong></div></div>
       <div className={styles.jobs}>{(d?.jobs||[]).map((job:any)=><article className={styles.job} key={job.id}><div className={styles.jobHead}><div><strong>{job.name}</strong><span>{job.status} · {job.conclusion||'in progress'} · {duration(job.started_at,job.completed_at)}</span></div><span className={styles.stepBadge}>{job.conclusion==='success'?'PASSED':job.conclusion==='failure'?'FAILED':String(job.status).toUpperCase()}</span></div><div className={styles.steps}>{(job.steps||[]).map((step:any)=><div className={styles.step} key={step.name}><span>{step.conclusion==='success'?'✓':step.conclusion==='failure'?'✕':step.status==='in_progress'?'●':'○'}</span><div><b>{step.name}</b><small>{step.status}{step.conclusion?' · '+step.conclusion:''}</small></div></div>)}</div>{job.logTail&&<details className={styles.logDetails} open={job.conclusion==='failure'}><summary>{job.conclusion==='failure'?'Failed job output':'Job output'}</summary><pre className={styles.log}>{job.logTail}</pre></details>}</article>)}</div>
      </section>}
-     {d?.failure&&<section className={styles.card}><div className={styles.sectionHead}><div><h2>Failure report</h2><p className={styles.muted}>Actual failure details and a ready-to-copy repair prompt.</p></div><button className={styles.linkButton} onClick={()=>copyPrompt(d.chatPrompt)}>Copy prompt</button></div><pre className={styles.errorLog}>{d.failure.lines.join('\\n')}</pre></section>}
+     {d?.failure&&<details className={styles.card+' '+styles.errorPanel} open={false}><summary className={styles.errorSummary}><div><h2>Failure report</h2><p className={styles.muted}>{d.failure.lines.length} captured error/context lines — expand to inspect.</p></div></summary><div className={styles.errorBody}><pre className={styles.errorLog}>{d.failure.lines.join('\\n')}</pre>{d.chatPrompt&&<div className={styles.prompt}><div className={styles.sectionHead}><div><h3>ChatGPT / Codex repair prompt</h3><p className={styles.muted}>Includes the run, failed job, commit and all captured errors.</p></div><button className={styles.linkButton} onClick={()=>copyPrompt(d.chatPrompt)}>Copy prompt</button></div><pre>{d.chatPrompt}</pre></div>}</div></details>}
     </article>
    })}
   </div>
