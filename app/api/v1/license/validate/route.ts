@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateLicense, recordInstallationCheckIn } from '../../../../lib/core/licenses';
+import { validateLicense, recordInstallationCheckIn } from '../../../../../lib/core/licenses';
 
 function requestIp(request: Request) {
   return request.headers.get('x-real-ip')?.trim() || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null;
@@ -54,28 +54,59 @@ export async function POST(request: Request) {
       if (!result.license_id || !installationId) {
         return NextResponse.json({ valid: false, code: 'INSTALLATION_ID_REQUIRED' }, { status: 400 });
       }
+
       await recordInstallationCheckIn({
         licenseId: String(result.license_id),
         installationId,
-        action: ['deploy','update','redeploy','rollback','check_in'].includes(String(body?.deployment_action||body?.action_name||'check_in').toLowerCase())
-          ? String(body?.deployment_action||body?.action_name||'check_in').toLowerCase() as any : 'check_in',
-        phase: ['started','completed','failed'].includes(String(body?.phase||'completed').toLowerCase())
-          ? String(body?.phase||'completed').toLowerCase() as any : 'completed',
+        action:
+          ['deploy', 'update', 'redeploy', 'rollback', 'check_in'].includes(
+            String(body?.deployment_action || body?.action_name || 'check_in').toLowerCase(),
+          )
+            ? (String(body?.deployment_action || body?.action_name || 'check_in').toLowerCase() as any)
+            : 'check_in',
+        phase:
+          ['started', 'completed', 'failed'].includes(String(body?.phase || 'completed').toLowerCase())
+            ? (String(body?.phase || 'completed').toLowerCase() as any)
+            : 'completed',
         product,
-        productVersion: body?.product_version ?? body?.productVersion ? String(body?.product_version ?? body?.productVersion) : null,
-        previousVersion: body?.previous_version ?? body?.previousVersion ? String(body?.previous_version ?? body?.previousVersion) : null,
-        releaseId: body?.release_id ?? body?.releaseId ? String(body?.release_id ?? body?.releaseId) : null,
-        deploymentId: body?.deployment_id ?? body?.deploymentId ? String(body?.deployment_id ?? body?.deploymentId) : null,
-        deploymentUrl: body?.deployment_url ?? body?.deploymentUrl ? String(body?.deployment_url ?? body?.deploymentUrl) : null,
-        projectId: body?.project_id ?? body?.projectId ? String(body?.project_id ?? body?.projectId) : null,
-        projectName: body?.project_name ?? body?.projectName ? String(body?.project_name ?? body?.projectName) : null,
+        productVersion:
+          body?.product_version ?? body?.productVersion
+            ? String(body?.product_version ?? body?.productVersion)
+            : null,
+        previousVersion:
+          body?.previous_version ?? body?.previousVersion
+            ? String(body?.previous_version ?? body?.previousVersion)
+            : null,
+        releaseId:
+          body?.release_id ?? body?.releaseId
+            ? String(body?.release_id ?? body?.releaseId)
+            : null,
+        deploymentId:
+          body?.deployment_id ?? body?.deploymentId
+            ? String(body?.deployment_id ?? body?.deploymentId)
+            : null,
+        deploymentUrl:
+          body?.deployment_url ?? body?.deploymentUrl
+            ? String(body?.deployment_url ?? body?.deploymentUrl)
+            : null,
+        projectId:
+          body?.project_id ?? body?.projectId
+            ? String(body?.project_id ?? body?.projectId)
+            : null,
+        projectName:
+          body?.project_name ?? body?.projectName
+            ? String(body?.project_name ?? body?.projectName)
+            : null,
         provider: body?.provider ? String(body.provider) : 'vercel',
         region: body?.region ? String(body.region) : null,
         platform: body?.platform ? String(body.platform) : 'vercel',
         architecture: body?.architecture ? String(body.architecture) : null,
         hostname: body?.hostname ? String(body.hostname) : null,
         client: body?.client ? String(body.client) : 'orbitfs-client',
-        clientVersion: body?.client_version ?? body?.clientVersion ? String(body?.client_version ?? body?.clientVersion) : null,
+        clientVersion:
+          body?.client_version ?? body?.clientVersion
+            ? String(body?.client_version ?? body?.clientVersion)
+            : null,
         customerIdentity: body?.customer_identity ?? body?.customerIdentity ?? null,
         details: body?.details && typeof body.details === 'object' ? body.details : {},
       });
