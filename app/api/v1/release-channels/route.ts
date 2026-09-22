@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { integrationAuthorized } from '../../../../../lib/auth';
-import { listReleaseChannels, saveReleaseChannel } from '../../../../../lib/core/release-channels';
+import { integrationAuthorized } from '../../../../lib/auth';
+import { listReleaseChannels, saveReleaseChannel } from '../../../../lib/core/release-channels';
 
 export async function GET(request: Request) {
   const auth = await integrationAuthorized(request, 'releases.read');
