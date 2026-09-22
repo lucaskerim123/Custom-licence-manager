@@ -16,7 +16,7 @@ export default function OperationsMenu({onClose}:{onClose:()=>void}){
  return null;
 }
 /* Legacy popup implementation retained below for reference only. */
-function LegacyOperationsMenu({onClose}:{onClose:()=>void}){
+export function LegacyOperationsMenu({onClose}:{onClose:()=>void}){
  const [jobs,setJobs]=useState<Jobs|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(''),[active,setActive]=useState<Record<string,number>>({}),[updates,setUpdates]=useState<UpdateSystem[]>([]),[checking,setChecking]=useState(false),[checkedAt,setCheckedAt]=useState('');
  const load=useCallback(async()=>{try{const r=await fetch('/api/operations',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load job status.');setJobs(d.jobs);setError('')}catch(e:any){setError(e.message||'Unable to load job status.')}},[]);
  const checkUpdates=useCallback(async()=>{setChecking(true);try{const r=await fetch('/api/operations/updates',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to check repository updates.');setUpdates(d.systems||[]);setCheckedAt(d.checkedAt||'')}catch(e:any){setError(e.message||'Unable to check repository updates.')}finally{setChecking(false)}},[]);
