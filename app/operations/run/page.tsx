@@ -51,7 +51,7 @@ export default function RunPage(){
      {!isCollapsed&&<div className={styles.systemBody}>
       <div className={styles.row}><div><strong>Scan &amp; Prepare</strong><span>{run?'#'+run.run_number+' · '+time(run.updated_at)+' · '+run.head_sha.slice(0,12):'No production gate run yet'}</span></div><button className={styles.primaryAction} onClick={()=>action(s.key,'ci')} disabled={!!busy}>{busy===s.key+'ci'?'Scanning…':'Scan & Prepare'}</button></div>
       <div className={styles.row}><div><strong>Production Deployment</strong><span>{passed?'Ready — exact commit passed Scan &amp; Prepare.':'Blocked until the exact current commit passes Scan &amp; Prepare.'}</span></div><div className={styles.actions}><button className={styles.deploy} onClick={()=>action(s.key,'deploy')} disabled={!!busy||!passed}>{busy===s.key+'deploy'?'Deploying…':'Deploy'}</button><button onClick={()=>action(s.key,'override-deploy')} disabled={!!busy}>{busy===s.key+'override-deploy'?'Starting…':'Override'}</button></div></div>
-      {d?.latestDeployment&&<div className={styles.latestDeployment}><strong>Latest production deployment</strong><span>#{d.latestDeployment.run_number} · {status(d.latestDeployment)} · {time(d.latestDeployment.updated_at)} · {d.latestDeployment.head_sha.slice(0,12)}</span><a href={d.latestDeployment.html_url} target="_blank" rel="noreferrer">GitHub</a></div>}
+      {d?.latestDeployment&&<div className={styles.latestDeployment}><strong>Latest production deployment</strong><span>#{d.latestDeployment.run_number} · {status(d.latestDeployment)} · {time(d.latestDeployment.updated_at)} · {d.latestDeployment.head_sha.slice(0,12)}</span><span className={styles.internalOnly}>Details are shown in the live console above.</span></div>}
       {run&&<section className={styles.consoleCard}>
        <button className={styles.consoleHeader} onClick={()=>setConsoleOpen(p=>({...p,[s.key]:!isConsoleOpen}))} aria-expanded={isConsoleOpen}><span><strong>LIVE CONSOLE</strong><small>{run.status==='completed'?'Final output':'Streaming workflow status · refreshes every '+(live?'3':'15')+' seconds'}</small></span><span className={styles.consoleIndicator}>{run.status==='completed'?'● CLOSED':'● LIVE'} {isConsoleOpen?'▾':'▸'}</span></button>
        {isConsoleOpen&&<div className={styles.consoleBody}>
@@ -67,5 +67,4 @@ export default function RunPage(){
      </div>}
     </article>})}
   </div>
- </main>
 }
