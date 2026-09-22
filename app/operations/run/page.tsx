@@ -1,13 +1,12 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
-import {useSearchParams} from 'next/navigation';
 import styles from './operations-run.module.css';
 function time(v?:string|null){return v?new Date(v).toLocaleString():'—'}
 function duration(a?:string|null,b?:string|null){if(!a)return '—';const end=b?new Date(b).getTime():Date.now(),sec=Math.max(0,Math.floor((end-new Date(a).getTime())/1000));return sec<60?sec+'s':Math.floor(sec/60)+'m '+sec%60+'s';}
 export default function RunPage(){
- const q=useSearchParams(),system=q.get('system')||'licenseManager',runId=q.get('runId')||'';
- const [data,setData]=useState<any>(null),[error,setError]=useState(''),[copied,setCopied]=useState(false);
+ const [system,setSystem]=useState('licenseManager'),[runId,setRunId]=useState(''),[data,setData]=useState<any>(null),[error,setError]=useState(''),[copied,setCopied]=useState(false);
+ useEffect(()=>{const q=new URLSearchParams(window.location.search);setSystem(q.get('system')||'licenseManager');setRunId(q.get('runId')||'')},[]);
  const load=useCallback(async()=>{if(!runId)return;try{const r=await fetch('/api/operations/run?system='+encodeURIComponent(system)+'&runId='+encodeURIComponent(runId),{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load workflow run.');setData(d);setError('')}catch(e:any){setError(e.message||'Unable to load workflow run.')}},[system,runId]);
  useEffect(()=>{load();const t=setInterval(load,5000);return()=>clearInterval(t)},[load]);
  const running=data?.run?.status!=='completed',failed=data?.run?.conclusion==='failure';
