@@ -1,19 +1,15 @@
 name: License Master CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: license-master-ci-${{ github.ref }}
+  group: license-master-ci-${{github.workflow}-${{github.ref}
   cancel-in-progress: true
 
 jobs:
@@ -38,10 +34,10 @@ jobs:
         run: npm run preflight
 
       - name: Upload temporary validation failure report
-        if: ${{ always() }}
+        if: ${{ always() }
         uses: actions/upload-artifact@v4
         with:
-          name: validation-failure-${{ github.sha }}
+          name: validation-failure-${{ github.sha }
           path: .orbitfs-validation/validation-error.txt
           if-no-files-found: ignore
           retention-days: 7
