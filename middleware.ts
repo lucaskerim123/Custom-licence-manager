@@ -11,7 +11,7 @@ export function middleware(request: NextRequest) {
   if (host === API_HOST) {
     if (pathname === '/') {
       const url = request.nextUrl.clone();
-      url.pathname = '/api/v1/health';
+      url.pathname = '/api/v1/license/health';
       return NextResponse.rewrite(url);
     }
     if (!pathname.startsWith('/api/')) {
