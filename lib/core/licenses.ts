@@ -25,7 +25,7 @@ export async function issueLicense(input: { productId: string; customerExternalI
     if(existingCurrent)return {...existingCurrent,key:undefined,alreadyIssued:true};
   }
   if(input.externalReference){
-    const existing=(await pool.query('select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,p.slug product from licenses l join products p on p.id=l.product_id where l.external_reference=$1 and l.status not in ('revoked','expired') order by l.created_at desc limit 1',[String(input.externalReference)])).rows[0];
+    const existing=(await pool.query("select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,p.slug product from licenses l join products p on p.id=l.product_id where l.external_reference=$1 and l.status not in ('revoked','expired') order by l.created_at desc limit 1",[String(input.externalReference)])).rows[0];
     if(existing)return {...existing,key:undefined,alreadyIssued:true};
   }
   const key=generateLicenseKey();const hash=hashKey(key);
