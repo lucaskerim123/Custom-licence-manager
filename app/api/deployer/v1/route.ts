@@ -13,6 +13,18 @@ export async function POST(request:Request){
   const phase=String(body?.phase||'authorize').toLowerCase();
   const releaseId=String(body?.releaseId||body?.release_id||'').trim();
   const installationId=String(body?.installationId||body?.installation_id||'').trim();
+  if(phase==='sync'){
+    const token=String(body?.vercelAccessToken||'').trim();
+    const deploymentId=String(body?.vercelDeploymentId||'').trim();
+    const teamId=body?.vercelTeamId?String(body.vercelTeamId):null;
+    if(!token||!deploymentId)return NextResponse.json({ok:false,code:'VERCEL_DEPLOYMENT_REQUIRED'},{status:400});
+    const url=new URL('/v13/deployments/'+encodeURIComponent(deploymentId),'https://api.vercel.com');
+    if(teamId)url.searchParams.set('teamId',teamId);
+    const response=await fetch(url,{headers:{authorization:'Bearer '+token},cache:'no-store'});
+    const text=await response.text();let data:any={};try{data=text?JSON.parse(text):{}}catch{data={error:text}};
+    if(!response.ok)return NextResponse.json({ok:false,code:'VERCEL_SYNC_FAILED',error:data?.error?.message||data?.error||'Vercel sync failed'},{status:response.status});
+    return NextResponse.json({ok:true,phase:'sync',id:data.id||data.uid||deploymentId,state:data.readyState||data.state||'BUILDING',url:data.url?'https://'+data.url:null,error:data.error?.message||data.error||null,projectId:data.projectId||null});
+  }
   if(!releaseId)return NextResponse.json({ok:false,code:'RELEASE_ID_REQUIRED'},{status:400});
   if(!['deploy','update','redeploy','rollback'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_DEPLOYMENT_ACTION'},{status:400});
   if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({ok:false,code:'INVALID_DEPLOYMENT_PHASE'},{status:400});
