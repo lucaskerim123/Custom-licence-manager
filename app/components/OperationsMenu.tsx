@@ -1,5 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
+import {useRouter} from 'next/navigation';
 import styles from './operations-menu.module.css';
 type Run={id:number;status:string;conclusion:string|null;run_number:number;head_sha:string;updated_at:string;html_url:string;name:string}|null;
 type Job={repo:string;label:string;ci:Run;deploy:Run};
@@ -10,6 +11,12 @@ function state(run:Run){if(!run)return{text:'NO RUN',kind:'neutral'};if(run.stat
 function time(value?:string){return value?new Date(value).toLocaleString():'—'}
 
 export default function OperationsMenu({onClose}:{onClose:()=>void}){
+ const router=useRouter();
+ useEffect(()=>{router.replace('/operations')},[router]);
+ return null;
+}
+/* Legacy popup implementation retained below for reference only. */
+function LegacyOperationsMenu({onClose}:{onClose:()=>void}){
  const [jobs,setJobs]=useState<Jobs|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(''),[active,setActive]=useState<Record<string,number>>({}),[updates,setUpdates]=useState<UpdateSystem[]>([]),[checking,setChecking]=useState(false),[checkedAt,setCheckedAt]=useState('');
  const load=useCallback(async()=>{try{const r=await fetch('/api/operations',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load job status.');setJobs(d.jobs);setError('')}catch(e:any){setError(e.message||'Unable to load job status.')}},[]);
  const checkUpdates=useCallback(async()=>{setChecking(true);try{const r=await fetch('/api/operations/updates',{cache:'no-store'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to check repository updates.');setUpdates(d.systems||[]);setCheckedAt(d.checkedAt||'')}catch(e:any){setError(e.message||'Unable to check repository updates.')}finally{setChecking(false)}},[]);
