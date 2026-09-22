@@ -57,7 +57,7 @@ Every integration endpoint except health requires:
 
 ### Health
 
-`GET /api/v1/health`
+`GET /api/v1/license/health`
 
 ### License issuance
 
