@@ -30,7 +30,17 @@ export async function GET(request:Request){
       : (await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where p.slug=$1 and r.channel=$2 and r.release_type=$3 and r.status='published' and r.review_status='approved' and r.archived_at is null order by r.published_at desc nulls last,r.created_at desc limit 1`,[product,channel,type])).rows[0];
 
     if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
+    if(String(release.product)!==product)return NextResponse.json({ok:false,code:'RELEASE_PRODUCT_MISMATCH'},{status:409});
     if(release.status!=='published'||release.review_status!=='approved'||release.archived_at)return NextResponse.json({ok:false,code:'RELEASE_NOT_PUBLISHED'},{status:409});
+    if(String(release.channel)!==channel)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_MISMATCH'},{status:409});
+    if(channel!=='stable'){
+      const policy=(await db().query('select access_mode,enabled from release_channels where channel=$1 limit 1',[channel])).rows[0];
+      if(!policy?.enabled)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_DISABLED'},{status:409});
+      if(policy.access_mode==='closed'){
+        const access=(await db().query('select 1 from release_channel_access where license_id=$1 and channel=$2 and (expires_at is null or expires_at>now()) limit 1',[validation.license_id,channel])).rows[0];
+        if(!access)return NextResponse.json({ok:false,code:'LICENSE_CHANNEL_ACCESS_DENIED'},{status:403});
+      }
+    }
     if(String(release.channel)!==channel&&releaseId)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_MISMATCH'},{status:409});
     if(String(release.release_type)!==type)return NextResponse.json({ok:false,code:'RELEASE_TYPE_MISMATCH'},{status:409});
 
