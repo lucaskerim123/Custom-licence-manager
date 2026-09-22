@@ -11,9 +11,9 @@ Both hostnames must point to the same Vercel deployment of `Custom-licence-manag
 
 The external API is rooted at `/api` and the current runtime endpoints include:
 
-- `GET /api/license/v1/health`
+- `GET /api/v1/license/health`
 - `POST /api/license/issue`
-- `POST /api/license/v1/validate` — public license validation (license key is the client credential)
+- `POST /api/v1/license/validate` — public license validation (license key is the client credential)
 - `POST /api/license/validate` — internal/integration-authenticated validation endpoint
 - `POST /api/license/{id}/control`
 - `GET /api/products`
