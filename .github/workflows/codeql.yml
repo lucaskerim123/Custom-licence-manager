@@ -1,11 +1,15 @@
-name: CodeQL
+name: CodeQL Manual Scan
+
 on:
   workflow_dispatch:
+
 permissions:
   contents: read
+
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  group: codeql-manual-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
