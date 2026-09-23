@@ -53,28 +53,28 @@ export default async function BaseDeployment() {
       <PageHeader
         eyebrow="Release Authority / Base"
         title="Base Release Control"
-        description="The License Manager is the technical authority for OrbitFS Base. Candidates arrive from the release worker, are validated here, then receive technical approval before Billing Store publication."
+        description="The License Manager is the technical authority for OrbitFS Base. Candidates arrive from the release worker, are validated here, then receive Base review, approval and publication from the License Manager."
         badge="ORBITFS_BASE"
       />
 
       <section className="release-hero card">
         <div className="release-hero-copy">
           <div className="eyebrow">Current gate</div>
-          <h2>Technical validation → approval → Billing Store</h2>
-          <p className="muted">This page does not deploy customer infrastructure. It proves that a Base package is valid, records the technical decision, and hands an approved candidate to the next system.</p>
+          <h2>Technical validation → approval → publish</h2>
+          <p className="muted">This page does not deploy customer infrastructure. It proves that a Base package is valid, records the technical decision, and publishes approved Base releases for the customer portal/deployer.</p>
         </div>
         <div className="release-hero-flow">
           <span className="flow-step active"><b>1</b> Intake</span><span className="flow-arrow">→</span>
           <span className="flow-step"><b>2</b> Validate</span><span className="flow-arrow">→</span>
           <span className="flow-step"><b>3</b> Approve</span><span className="flow-arrow">→</span>
-          <span className="flow-step"><b>4</b> Billing Store</span>
+          <span className="flow-step"><b>4</b> Publish</span>
         </div>
       </section>
 
       <div className="grid release-stats">
         <div className="card stat-card"><div className="stat-label">Needs technical review</div><div className="metric">{pending}</div><small className="muted">Candidates waiting for a decision</small></div>
         <div className="card stat-card"><div className="stat-label">Validation blocked</div><div className="metric">{blocked}</div><small className="muted">Failed checks or rejected candidates</small></div>
-        <div className="card stat-card"><div className="stat-label">Approved for Billing Store</div><div className="metric">{ready}</div><small className="muted">Technically cleared candidates</small></div>
+        <div className="card stat-card"><div className="stat-label">Approved for publish</div><div className="metric">{ready}</div><small className="muted">Validated Base candidates ready to publish</small></div>
         <div className="card stat-card"><div className="stat-label">Published Base</div><div className="metric">{published}</div><small className="muted">Customer-facing published releases</small></div>
       </div>
 
