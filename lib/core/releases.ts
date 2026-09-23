@@ -9,7 +9,106 @@ const FORBIDDEN_PATHS = /(^|\/)(\.env(?:$|\.(?!example$))|\.git(?:\/|$)|node_mod
 
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
 function validationManifest(row: any, checks: any[], status: 'passed' | 'failed') { return { ...(row.manifest || {}), validation: { status, checked_at: new Date().toISOString(), checks } }; }
-async function scanPackage(row:any,bytes:Buffer){const checks:any[]=[];if(!String(row.artifact_name||'').endsWith('.json.gz')){checks.push({key:'package_format',ok:false,message:'Release artifact must be the OrbitFS .json.gz package format.'});return checks;}try{const raw=gunzipSync(bytes).toString('utf8');const pkg=JSON.parse(raw);const files=Array.isArray(pkg.files)?pkg.files:[];const validFiles=files.every((f:any)=>f&&typeof f.file==='string'&&/^[a-f0-9]{64}$/i.test(f.sha256)&&Number.isInteger(f.size)&&f.size>=0&&typeof f.data==='string');const isV3=pkg.format==='orbitfs-engine-release-v3'||pkg.schemaVersion>=3;const validComponents=!isV3||files.every((f:any)=>['shared','apex','mcp','studio','core'].includes(String(f.component||'')));const validState=!isV3||(pkg.componentVersions&&typeof pkg.componentVersions==='object'&&pkg.minimumBaseVersion&&Array.isArray(pkg.components));const engineCompatibility=row.release_type!=='update'||(Array.isArray(pkg.components)&&pkg.components.length>0&&Number.isInteger(Number(pkg.minimumEngineDeployerProtocol))&&Number(pkg.minimumEngineDeployerProtocol)>=1&&/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(String(pkg.minimumBaseVersion||'')));checks.push({key:'package_manifest',ok:Boolean(pkg.schemaVersion&&pkg.version&&pkg.sourceCommit&&validFiles&&validComponents&&validState),message:(validFiles&&validComponents&&validState)?'Package manifest structure and target release state are valid.':'Package manifest structure or target release state is invalid.'});if(row.release_type==='update')checks.push({key:'package_engine_compatibility',ok:engineCompatibility,message:engineCompatibility?'Engine minimum Base version, deployer protocol and component metadata are valid.':'Engine artifact is missing or has invalid minimum Base version, deployer protocol or component metadata.'});const forbidden=files.filter((f:any)=>FORBIDDEN_PATHS.test(f.file));checks.push({key:'package_paths',ok:forbidden.length===0,message:forbidden.length?`Package contains forbidden paths: ${forbidden.slice(0,5).map((f:any)=>f.file).join(', ')}`:'Package paths passed security scan.'});const duplicatePaths=files.map((f:any)=>f.file).filter((v:string,i:number,a:string[])=>a.indexOf(v)!==i);checks.push({key:'package_duplicates',ok:duplicatePaths.length===0,message:duplicatePaths.length?`Package contains duplicate paths: ${[...new Set(duplicatePaths)].slice(0,5).join(', ')}`:'Package contains no duplicate paths.'});checks.push({key:'package_version',ok:String(pkg.version||'')===String(row.version||''),message:String(pkg.version||'')===String(row.version||'')?'Package version matches release version.':'Package version does not match release version.'});checks.push({key:'package_source',ok:String(pkg.sourceCommit||'')===String(row.source_sha||''),message:String(pkg.sourceCommit||'')===String(row.source_sha||'')?'Package source commit matches release source.':'Package source commit does not match release source.'});checks.push({key:'package_files',ok:files.length>0&&Number(pkg.fileCount||files.length)===files.length,message:`Package contains ${files.length} files.`});let invalidPayload=0;for(const f of files){try{const data=Buffer.from(f.data,'base64');const hash=createHash('sha256').update(data).digest('hex');if(data.length!==f.size||hash.toLowerCase()!==String(f.sha256).toLowerCase())invalidPayload++;}catch{invalidPayload++;}}checks.push({key:'package_file_integrity',ok:invalidPayload===0,message:invalidPayload===0?'Every packaged file matches its declared size and SHA-256.':`${invalidPayload} packaged file(s) failed size/SHA-256 verification.`});}catch(error){checks.push({key:'package_scan',ok:false,message:error instanceof Error?`Package scan failed: ${error.message}`:'Package scan failed.'});}return checks;}
+function inspectPackageFiles(files:any[],options:{label:string;componentMode?:'engine-v3'|'none'}){
+  const list=Array.isArray(files)?files:[];
+  const seen=new Set<string>();
+  const duplicates:string[]=[];
+  const forbidden:string[]=[];
+  const invalidComponents:string[]=[];
+  let invalidPayload=0;
+  let invalidStructure=0;
+  for(const f of list){
+    const file=String(f?.file||'');
+    if(!f||!file||!/^[a-f0-9]{64}$/i.test(String(f.sha256||''))||!Number.isInteger(f.size)||f.size<0||typeof f.data!=='string')invalidStructure++;
+    if(seen.has(file))duplicates.push(file);else seen.add(file);
+    if(FORBIDDEN_PATHS.test(file))forbidden.push(file);
+    if(options.componentMode==='engine-v3'&&!['shared','apex','mcp','studio','core'].includes(String(f?.component||'')))invalidComponents.push(file);
+    try{
+      const data=Buffer.from(String(f?.data||''),'base64');
+      const hash=createHash('sha256').update(data).digest('hex');
+      if(data.length!==Number(f?.size)||hash.toLowerCase()!==String(f?.sha256||'').toLowerCase())invalidPayload++;
+    }catch{invalidPayload++;}
+  }
+  return {label:options.label,list,invalidStructure,duplicates:[...new Set(duplicates)],forbidden,invalidComponents,invalidPayload};
+}
+function appendFileChecks(checks:any[],result:ReturnType<typeof inspectPackageFiles>,prefix='package'){
+  const name=result.label;
+  checks.push({key:`${prefix}_files`,ok:result.list.length>0&&result.invalidStructure===0,message:result.list.length>0&&result.invalidStructure===0?`${name} contains ${result.list.length} structurally valid file(s).`:`${name} file list is empty or malformed.`});
+  checks.push({key:`${prefix}_paths`,ok:result.forbidden.length===0,message:result.forbidden.length?`${name} contains forbidden paths: ${result.forbidden.slice(0,5).join(', ')}`:`${name} paths passed security scan.`});
+  checks.push({key:`${prefix}_duplicates`,ok:result.duplicates.length===0,message:result.duplicates.length?`${name} contains duplicate paths: ${result.duplicates.slice(0,5).join(', ')}`:`${name} contains no duplicate paths.`});
+  if(result.invalidComponents.length)checks.push({key:`${prefix}_components`,ok:false,message:`${name} has files without valid Engine component metadata: ${result.invalidComponents.slice(0,5).join(', ')}`});
+  checks.push({key:`${prefix}_file_integrity`,ok:result.invalidPayload===0,message:result.invalidPayload===0?`Every ${name} file matches its declared size and SHA-256.`:`${result.invalidPayload} ${name} file(s) failed size/SHA-256 verification.`});
+}
+async function scanPackage(row:any,bytes:Buffer){
+  const checks:any[]=[];
+  if(!String(row.artifact_name||'').endsWith('.json.gz')){
+    checks.push({key:'package_format',ok:false,message:'Release artifact must be the OrbitFS .json.gz package format.'});
+    return checks;
+  }
+  try{
+    const raw=gunzipSync(bytes).toString('utf8');
+    const pkg=JSON.parse(raw);
+    const semver=/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
+    const isBundle=pkg.format==='orbitfs-update-bundle-v3'&&Number(pkg.schemaVersion)===3;
+
+    if(isBundle){
+      const components=canonicalComponents(pkg.components,'update');
+      const validTargets=components.length>0&&components.every((x:string)=>['base','mcp','apex','studio'].includes(x));
+      const engineTargets=components.filter((x:string)=>x!=='base');
+      const wantsBase=components.includes('base');
+      const panel=pkg?.payloads?.panel??null;
+      const engine=pkg?.payloads?.engine??null;
+      const protocol=Number(pkg.minimumEngineDeployerProtocol);
+      const compatibility=semver.test(String(pkg.minimumBaseVersion||''))&&Number.isInteger(protocol)&&protocol>=1&&pkg.checkpointRequired===true;
+      const componentVersions=pkg.componentVersions&&typeof pkg.componentVersions==='object'&&!Array.isArray(pkg.componentVersions);
+      checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions?'valid.':'invalid.')});
+      checks.push({key:'package_engine_compatibility',ok:compatibility,message:compatibility?'Minimum Base version, deployer protocol and checkpoint contract are valid.':'Update bundle compatibility metadata is invalid.'});
+
+      const panelOk=!wantsBase?panel===null:Boolean(panel&&panel.format==='orbitfs-base-deployment-v2'&&Number(panel.schemaVersion)===2&&String(panel.version||'')===String(pkg.version||'')&&String(panel.baseVersion||'')===String(pkg.minimumBaseVersion||'')&&String(panel.sourceCommit||'')===String(pkg.sourceCommit||'')&&Array.isArray(panel.components)&&panel.components.includes('base'));
+      checks.push({key:'package_panel_payload',ok:panelOk,message:wantsBase?(panelOk?'Base target has a valid Panel update payload.':'Base target requires a valid Panel update payload composed on the declared minimum Base version.'):(panel===null?'No Panel payload is present for an Engine-only update.':'Panel payload must be null when Base is not selected.')});
+
+      const engineComponents=engine?canonicalComponents(engine.components,'update').filter((x:string)=>x!=='base'):[];
+      const expectedEngine=[...engineTargets].sort().join(',');
+      const actualEngine=[...engineComponents].sort().join(',');
+      const engineFormat=engine&&['orbitfs-engine-release-v2','orbitfs-engine-release-v3'].includes(String(engine.format||''));
+      const engineOk=!engineTargets.length?engine===null:Boolean(engine&&engineFormat&&String(engine.version||'')===String(pkg.version||'')&&String(engine.sourceCommit||'')===String(pkg.sourceCommit||'')&&String(engine.minimumBaseVersion||'')===String(pkg.minimumBaseVersion||'')&&Number(engine.minimumEngineDeployerProtocol)===protocol&&engine.checkpointRequired===true&&actualEngine===expectedEngine);
+      checks.push({key:'package_engine_payload',ok:engineOk,message:engineTargets.length?(engineOk?'Engine/add-on targets have a valid Engine Host payload.':'Engine/add-on targets require a matching Engine Host payload.'):(engine===null?'No Engine payload is present for a Base-only update.':'Engine payload must be null when no Engine/add-on target is selected.')});
+
+      let total=0;
+      if(panel){
+        const inspected=inspectPackageFiles(panel.files,{label:'Panel payload'});
+        appendFileChecks(checks,inspected,'package_panel');
+        total+=inspected.list.length;
+        checks.push({key:'package_panel_file_count',ok:Number(panel.fileCount||0)===inspected.list.length,message:`Panel payload declares ${Number(panel.fileCount||0)} file(s); scanned ${inspected.list.length}.`});
+      }
+      if(engine){
+        const inspected=inspectPackageFiles(engine.files,{label:'Engine payload',componentMode:Number(engine.schemaVersion||0)>=3?'engine-v3':'none'});
+        appendFileChecks(checks,inspected,'package_engine');
+        total+=inspected.list.length;
+        checks.push({key:'package_engine_file_count',ok:Number(engine.fileCount||0)===inspected.list.length,message:`Engine payload declares ${Number(engine.fileCount||0)} file(s); scanned ${inspected.list.length}.`});
+      }
+      checks.push({key:'package_files',ok:total>0&&Number(pkg.fileCount||0)===total,message:`Update bundle contains ${total} nested file(s).`});
+      checks.push({key:'package_version',ok:String(pkg.version||'')===String(row.version||''),message:String(pkg.version||'')===String(row.version||'')?'Package version matches release version.':'Package version does not match release version.'});
+      checks.push({key:'package_source',ok:String(pkg.sourceCommit||'')===String(row.source_sha||''),message:String(pkg.sourceCommit||'')===String(row.source_sha||'')?'Package source commit matches release source.':'Package source commit does not match release source.'});
+      return checks;
+    }
+
+    const files=Array.isArray(pkg.files)?pkg.files:[];
+    const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
+    const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
+    const validState=!isEngineV3||(pkg.componentVersions&&typeof pkg.componentVersions==='object'&&pkg.minimumBaseVersion&&Array.isArray(pkg.components));
+    const engineCompatibility=row.release_type!=='update'||(Array.isArray(pkg.components)&&pkg.components.length>0&&Number.isInteger(Number(pkg.minimumEngineDeployerProtocol))&&Number(pkg.minimumEngineDeployerProtocol)>=1&&semver.test(String(pkg.minimumBaseVersion||'')));
+    checks.push({key:'package_manifest',ok:Boolean(pkg.schemaVersion&&pkg.version&&pkg.sourceCommit&&inspected.invalidStructure===0&&validState),message:(inspected.invalidStructure===0&&validState)?'Package manifest structure and target release state are valid.':'Package manifest structure or target release state is invalid.'});
+    if(row.release_type==='update')checks.push({key:'package_engine_compatibility',ok:engineCompatibility,message:engineCompatibility?'Engine minimum Base version, deployer protocol and component metadata are valid.':'Engine artifact is missing or has invalid minimum Base version, deployer protocol or component metadata.'});
+    appendFileChecks(checks,inspected,'package');
+    checks.push({key:'package_version',ok:String(pkg.version||'')===String(row.version||''),message:String(pkg.version||'')===String(row.version||'')?'Package version matches release version.':'Package version does not match release version.'});
+    checks.push({key:'package_source',ok:String(pkg.sourceCommit||'')===String(row.source_sha||''),message:String(pkg.sourceCommit||'')===String(row.source_sha||'')?'Package source commit matches release source.':'Package source commit does not match release source.'});
+    checks.push({key:'package_file_count',ok:files.length>0&&Number(pkg.fileCount||files.length)===files.length,message:`Package contains ${files.length} files.`});
+  }catch(error){
+    checks.push({key:'package_scan',ok:false,message:error instanceof Error?`Package scan failed: ${error.message}`:'Package scan failed.'});
+  }
+  return checks;
+}
 async function checkArtifact(row: any) {
   const checks: any[] = [];
   const expected = String(row.checksum || '').trim().toLowerCase();
