@@ -8,6 +8,14 @@ create table if not exists system_settings (
   maintenance_mode boolean not null default false,
   release_system_enabled boolean not null default true,
   deployment_enabled boolean not null default true,
+  validation_ttl_seconds integer not null default 60,
+  offline_grace_seconds integer not null default 0,
+  pulse_poll_seconds integer not null default 15,
+  max_failed_validations integer not null default 3,
+  allow_offline_grace boolean not null default false,
+  pulse_revision bigint not null default 1,
+  pulse_at timestamptz not null default now(),
+  pulse_reason text not null default 'initial',
   updated_at timestamptz not null default now(),
   check (id = true)
 );
@@ -65,6 +73,14 @@ drop trigger if exists users_touch on users;create trigger users_touch before up
 alter table releases add column if not exists manifest jsonb not null default '{}'::jsonb;
 alter table system_settings add column if not exists release_system_enabled boolean not null default true;
 alter table system_settings add column if not exists deployment_enabled boolean not null default true;
+alter table system_settings add column if not exists validation_ttl_seconds integer not null default 60;
+alter table system_settings add column if not exists offline_grace_seconds integer not null default 0;
+alter table system_settings add column if not exists pulse_poll_seconds integer not null default 15;
+alter table system_settings add column if not exists max_failed_validations integer not null default 3;
+alter table system_settings add column if not exists allow_offline_grace boolean not null default false;
+alter table system_settings add column if not exists pulse_revision bigint not null default 1;
+alter table system_settings add column if not exists pulse_at timestamptz not null default now();
+alter table system_settings add column if not exists pulse_reason text not null default 'initial';
 alter table user_sessions add column if not exists user_agent text;
 alter table user_sessions add column if not exists ip_address text;
 alter table licenses add column if not exists external_reference text;
