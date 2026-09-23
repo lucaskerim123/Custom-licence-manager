@@ -1,6 +1,6 @@
 import {requireUser} from '../../lib/session';
 import {getSettings,setSetting,sendPulse,updateRuntimePolicy,type SettingField} from '../../lib/core/settings';
-import {createApiKey,listApiKeys,revokeApiKey,deleteRevokedKey,type ApiScope} from '../../lib/core/api-keys';
+import {createApiKey,listApiKeys,revokeApiKey,deleteRevokedApiKey,type ApiScope} from '../../lib/core/api-keys';
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import SideNav from '../components/SideNav';
