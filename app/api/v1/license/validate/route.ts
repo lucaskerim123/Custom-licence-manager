@@ -121,6 +121,9 @@ export async function POST(request: Request) {
         expiresAt: result.expires_at ?? null,
         metadata: result.metadata ?? {},
         license_id: result.license_id ?? null,
+        runtime_policy: (result as any).runtime_policy ?? null,
+        pulse_revision: (result as any).runtime_policy?.pulse_revision ?? null,
+        pulse_at: (result as any).runtime_policy?.pulse_at ?? null,
       },
       { status: result.status },
     );
