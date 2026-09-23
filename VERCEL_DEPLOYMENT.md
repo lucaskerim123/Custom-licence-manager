@@ -72,6 +72,6 @@ Production is deployed from `main`. Functional changes must go through the manua
 ## Canonical hosts
 
 - Admin UI: `https://panel.incendiarynetworks.cc`
-- External API: `https://incendiarynetworks.cc/api`
+- External API: `https://incendiarynetworks.cc/api/v1`
 - External integration endpoints: `https://incendiarynetworks.cc/api/v1/*`
-- API root: `https://incendiarynetworks.cc/api`
+- API root: `https://incendiarynetworks.cc/api/v1`
