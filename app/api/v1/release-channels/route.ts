@@ -26,6 +26,8 @@ export async function POST(request: Request) {
         enabled: body.enabled,
         customerVisible: body.customer_visible ?? body.customerVisible,
         accessMode: body.access_mode ?? body.accessMode,
+        accessRequestEnabled: body.access_request_enabled ?? body.accessRequestEnabled,
+        selfJoinEnabled: body.self_join_enabled ?? body.selfJoinEnabled,
         sortOrder: body.sort_order ?? body.sortOrder,
         actor: `api:${auth.name}`,
       }),
