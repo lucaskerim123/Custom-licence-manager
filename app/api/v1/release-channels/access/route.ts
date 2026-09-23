@@ -13,11 +13,11 @@ export async function GET(request: Request) {
   if(channel){params.push(channel);where.push(`channel=$${params.length}`);}
   if(view==='access'){
     const accessParams:any[]=[]; const accessWhere:string[]=[];
-    if(channel){accessParams.push(channel);accessWhere.push(`channel=${accessParams.length}`);}
+    if(channel){accessParams.push(channel);accessWhere.push(`channel=$${accessParams.length}`);}
     const access=(await db().query(`select * from release_channel_access ${accessWhere.length?`where ${accessWhere.join(' and ')}`:''} order by channel,updated_at desc`,accessParams)).rows;
     return NextResponse.json({access});
   }
-  if(status!=='all'){params.push(status);where.push(`status=${params.length}`);}
+  if(status!=='all'){params.push(status);where.push(`status=$${params.length}`);}
   const rows=(await db().query(`select * from release_channel_access_requests ${where.length?`where ${where.join(' and ')}`:''} order by requested_at desc`,params)).rows;
   return NextResponse.json({requests:rows});
 }
