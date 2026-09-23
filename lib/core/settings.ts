@@ -76,5 +76,5 @@ export async function updateRuntimePolicy(input:Partial<RuntimePolicy>,actorUser
     [actorUserId,actor,JSON.stringify(next)],
   );
   await sendPulse(actorUserId,actor,'runtime-policy-changed',next);
-  return result.rows[0];
+  return await getSettings();
 }
