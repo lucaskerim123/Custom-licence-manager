@@ -104,6 +104,35 @@ alter table releases drop constraint if exists releases_channel_fkey;
 alter table releases add constraint releases_channel_fkey foreign key(channel) references release_channels(channel);
 create index if not exists release_channels_enabled_idx on release_channels(enabled,customer_visible,sort_order);
 
+create table if not exists release_channel_access (
+  id uuid primary key default gen_random_uuid(),
+  license_id uuid not null references licenses(id) on delete cascade,
+  channel text not null references release_channels(channel) on delete cascade,
+  granted_by text,
+  external_reference text,
+  expires_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(license_id, channel)
+);
+create index if not exists release_channel_access_license_idx on release_channel_access(license_id,channel);
+create index if not exists release_channel_access_expiry_idx on release_channel_access(channel,expires_at);
+
+create table if not exists release_channel_access_requests (
+  id uuid primary key default gen_random_uuid(),
+  license_id uuid not null references licenses(id) on delete cascade,
+  channel text not null references release_channels(channel) on delete cascade,
+  external_reference text,
+  status text not null default 'pending' check(status in ('pending','approved','rejected','cancelled')),
+  requested_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by text,
+  reason text,
+  unique(license_id,channel,status)
+);
+create index if not exists release_channel_access_requests_channel_status_idx on release_channel_access_requests(channel,status,requested_at desc);
+create index if not exists release_channel_access_requests_license_idx on release_channel_access_requests(license_id,status,requested_at desc);
+
 create table if not exists deployment_events (
   id uuid primary key default gen_random_uuid(),
   license_id uuid references licenses(id) on delete set null,
