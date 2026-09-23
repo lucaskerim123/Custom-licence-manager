@@ -33,7 +33,7 @@ export async function sendPulse(actorUserId:string|null,actor:string,reason:stri
   return pulse;
 }
 
-export async function setSetting(field:SettingField,value:boolean,actorUserId:string,actor:string) {
+export async function setSetting(field:SettingField,value:boolean,actorUserId:string|null,actor:string) {
   const allowed:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','release_system_enabled','deployment_enabled'];
   if(!allowed.includes(field))throw new Error('Unsupported authority setting');
   const before=await getSettings();
