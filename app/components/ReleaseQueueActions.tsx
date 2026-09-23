@@ -9,6 +9,7 @@ type Props = {
   validationStatus: string;
   published: boolean;
   archived: boolean;
+  releaseType: string;
 };
 
 type State = {
@@ -26,6 +27,7 @@ export default function ReleaseQueueActions({
   validationStatus,
   published,
   archived,
+  releaseType,
 }: Props) {
   const [state, action, pending] = useActionState(runReleaseAction, initial);
   const canReview = !published && reviewStatus === 'pending';
@@ -70,6 +72,14 @@ export default function ReleaseQueueActions({
           <button className="button danger" disabled={pending}>
             Reject
           </button>
+        </form>
+      )}
+
+      {!published && !archived && releaseType === 'base' && reviewStatus === 'approved' && validationStatus === 'passed' && (
+        <form action={action} onSubmit={(e) => { if (!confirm('Publish this validated Base release?')) e.preventDefault(); }}>
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="action" value="publish" />
+          <button className="button" disabled={pending}>Publish Base</button>
         </form>
       )}
 
