@@ -165,9 +165,21 @@ export default function RunPage() {
                       <strong>Scan &amp; Prepare</strong>
                       <span>{run ? '#' + run.run_number + ' · ' + time(run.updated_at) + ' · ' + run.head_sha.slice(0, 12) : 'No production gate run yet'}</span>
                     </div>
-                    <button className={styles.primaryAction} onClick={() => action(system.key, 'ci')} disabled={!!busy}>
-                      {busy === system.key + 'ci' ? 'Scanning…' : 'Scan & Prepare'}
-                    </button>
+                    <div className={styles.actions}>
+                      {run && (
+                        <a
+                          className={styles.linkButton}
+                          href={run.html_url || `https://github.com/${system.repo}/actions/runs/${run.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View job
+                        </a>
+                      )}
+                      <button className={styles.primaryAction} onClick={() => action(system.key, 'ci')} disabled={!!busy}>
+                        {busy === system.key + 'ci' ? 'Scanning…' : 'Scan & Prepare'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className={styles.row}>
