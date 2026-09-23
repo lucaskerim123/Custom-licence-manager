@@ -2,6 +2,19 @@ import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../lib/auth';
 import { db } from '../../../../../lib/db';
 
+export async function GET(request: Request) {
+  const auth = await integrationAuthorized(request, 'releases.read');
+  if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
+  const url = new URL(request.url);
+  const channel = String(url.searchParams.get('channel') || '').trim().toLowerCase();
+  const status = String(url.searchParams.get('status') || 'pending').trim().toLowerCase();
+  const params:any[]=[]; const where:string[]=[];
+  if(channel){params.push(channel);where.push(`channel=$${params.length}`);}
+  if(status!=='all'){params.push(status);where.push(`status=$${params.length}`);}
+  const rows=(await db().query(`select * from release_channel_access_requests ${where.length?`where ${where.join(' and ')}`:''} order by requested_at desc`,params)).rows;
+  return NextResponse.json({requests:rows});
+}
+
 export async function POST(request: Request) {
   const auth = await integrationAuthorized(request, 'releases.write');
   if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
@@ -26,9 +39,7 @@ export async function POST(request: Request) {
 
   if (action === 'list_requests') {
     const rows = (await db().query(
-      `select * from release_channel_access_requests
-       where license_id=$1
-       order by requested_at desc`,
+      `select * from release_channel_access_requests where license_id=$1 order by requested_at desc`,
       [licenseId],
     )).rows;
     return NextResponse.json({ requests: rows });
