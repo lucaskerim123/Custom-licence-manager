@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { db } from '../db';
+import { sendPulse } from './settings';
 
 export type LicenseStatus = 'pending' | 'active' | 'suspended' | 'revoked' | 'expired';
 export type InstallationStatus = 'active' | 'locked' | 'terminated';
@@ -36,12 +37,13 @@ export async function issueLicense(input: { productId: string; customerExternalI
 }
 
 export async function validateLicense(input:{key:string;productSlug:string;componentSlug?:string;installationId?:string;productVersion?:string;metadata?:Record<string,unknown>;requestIp?:string|null;userAgent?:string|null;telemetry?:Record<string,unknown>}){
-  const pool=db();const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
-  if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode)return{valid:false,code:'AUTHORITY_UNAVAILABLE' as const,status:503};
+  const pool=db();const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode,validation_ttl_seconds,offline_grace_seconds,pulse_poll_seconds,max_failed_validations,allow_offline_grace,pulse_revision,pulse_at,pulse_reason from system_settings where id=true')).rows[0];
+  const runtime_policy={validation_ttl_seconds:Number(state?.validation_ttl_seconds||60),offline_grace_seconds:Number(state?.offline_grace_seconds||0),pulse_poll_seconds:Number(state?.pulse_poll_seconds||15),max_failed_validations:Number(state?.max_failed_validations||3),allow_offline_grace:Boolean(state?.allow_offline_grace),pulse_revision:Number(state?.pulse_revision||0),pulse_at:state?.pulse_at??null,pulse_reason:state?.pulse_reason??null};
+  if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode)return{valid:false,code:'AUTHORITY_UNAVAILABLE' as const,status:503,runtime_policy};
   const componentSlug=input.componentSlug||input.productSlug;
   const productFamily=input.productSlug==='orbitfs'?'orbitfs':componentSlug.startsWith('orbitfs_')?'orbitfs':input.productSlug;
   const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug=$2 and $3='orbitfs' and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key),componentSlug,productFamily]);
-  if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404};
+  if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
   const license=result.rows[0];const expired=Boolean(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now());const validLicense=license.product_status==='active'&&license.status==='active'&&!expired;
   if(expired&&license.status==='active')await pool.query(`update licenses set status='expired' where id=$1 and status='active'`,[license.id]);
   let installationValid=true;
@@ -52,7 +54,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
       const count=(await pool.query("select count(*)::int count from activations where license_id=$1 and status in ('active','locked')",[license.id])).rows[0]?.count||0;
       const activationRows=(await pool.query("select 1 from activations where license_id=$1 and installation_id=$2 limit 1",[license.id,input.installationId])).rows;
       const already=activationRows.length>0;
-      if(!already&&Number(count)>=maxInstallations)return{valid:false,code:'INSTALLATION_LIMIT_REACHED' as const,status:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id};
+      if(!already&&Number(count)>=maxInstallations)return{valid:false,code:'INSTALLATION_LIMIT_REACHED' as const,status:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy};
     }
     const existing=(await pool.query(`select status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
     installationValid=!existing||existing.status==='active';
@@ -63,7 +65,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   }
   const valid=validLicense&&installationValid;
   const code=valid?'LICENSE_VALID':!installationValid?'INSTALLATION_LOCKED_OR_TERMINATED':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':`LICENSE_${String(license.status).toUpperCase()}`;
-  return{valid,code,status:valid?200:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id};
+  return{valid,code,status:valid?200:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy};
 }
 
 export async function deleteLicense(id:string,actorUserId?:string|null,actor?:string){
@@ -74,13 +76,13 @@ export async function deleteLicense(id:string,actorUserId?:string|null,actor?:st
     if(!current) throw new Error('License not found');
     await client.query('delete from licenses where id=$1',[id]);
     await client.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.delete','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({customer_external_id:current.customer_external_id,product_id:current.product_id,status:current.status,key_destroyed:true})]);
-    await client.query('COMMIT'); return {id,deleted:true};
+    await client.query('COMMIT'); await sendPulse(actorUserId??null,actor??'system','license-deleted',{license_id:id}); return {id,deleted:true};
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }
 
-export async function setLicenseStatus(id:string,status:LicenseStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update licenses set status=$1 where id=$2 returning id,status`,[status,id]);if(!result.rowCount)throw new Error('License not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.status','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);return result.rows[0];}
+export async function setLicenseStatus(id:string,status:LicenseStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update licenses set status=$1 where id=$2 returning id,status`,[status,id]);if(!result.rowCount)throw new Error('License not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.status','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);const pulse=await sendPulse(actorUserId??null,actor??'system',`license-${status}`,{license_id:id,status});return {...result.rows[0],pulse};}
 
-export async function setInstallationStatus(id:string,status:InstallationStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update activations set status=$1 where id=$2 returning id,license_id,installation_id,status,last_seen_at`,[status,id]);if(!result.rowCount)throw new Error('Installation not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'installation.status','activation',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);return result.rows[0];}
+export async function setInstallationStatus(id:string,status:InstallationStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update activations set status=$1 where id=$2 returning id,license_id,installation_id,status,last_seen_at`,[status,id]);if(!result.rowCount)throw new Error('Installation not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'installation.status','activation',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);const row=result.rows[0];const pulse=await sendPulse(actorUserId??null,actor??'system',`installation-${status}`,{activation_id:id,license_id:row.license_id,installation_id:row.installation_id,status});return {...row,pulse};}
 
 export async function rotateLicense(id:string,actorUserId?:string|null,actor?:string){
   const pool=db();
@@ -107,7 +109,8 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
        values($1,$2,'license.rotate','license',$3,$4)`,
       [actorUserId??null,actor??'system',id,JSON.stringify({reused_license_id:id,previous_last4:previousLast4,rotated_in_place:true})],
     );
-    return {...replacement,key,alreadyIssued:false};
+    const pulse=await sendPulse(actorUserId??null,actor??'system','license-key-rotated',{license_id:id});
+    return {...replacement,key,alreadyIssued:false,pulse};
   }
 
   // Rotation never issues a second license record. Terminal licenses are
