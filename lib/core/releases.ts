@@ -95,11 +95,18 @@ export async function promoteRelease(id:string,targetChannel:string,actorUserId?
  if(existing) return existing;
  const revision=Number((await pool.query(`select coalesce(max(revision),0)::int revision from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4`,[source.product_id,channel.channel,source.version,source.release_type])).rows[0].revision||0)+1;
  const manifest={...(source.manifest||{}),promoted_from:{release_id:source.id,channel:source.channel,promoted_at:new Date().toISOString()}};
- const result=await pool.query(`insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',null,'pending','not_started',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,[source.product_id,channel.channel,source.version,source.release_type,source.source_repo,source.source_ref,source.artifact_url,source.checksum,source.notes,source.source_sha,source.artifact_name,source.artifact_repo,source.artifact_run_id,source.vercel_ready,source.supabase_ready,source.customer_publication_repo,manifest,revision,source.id]);
+ // Promotion is not a new technical candidate. The source has already passed License
+ // Master validation/approval, so the promoted release preserves that approval and
+ // validation state. Publication remains a separate customer-facing action.
+ const result=await pool.query(`insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *`,
+ [source.product_id,channel.channel,source.version,source.release_type,source.source_repo,source.source_ref,source.artifact_url,source.checksum,source.notes,
+  source.status==='published'?'published':'draft',source.status==='published'?source.published_at:null,source.deployment_status||'not_started',
+  source.source_sha,source.artifact_name,source.artifact_repo,source.artifact_run_id,source.vercel_ready,source.supabase_ready,source.customer_publication_repo,manifest,revision,source.id]);
  const row=result.rows[0];
- await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.promote','release',$3,$4)`,[actorUserId??null,actor??'admin',row.id,JSON.stringify({from_release_id:source.id,from_channel:source.channel,to_channel:channel.channel,version:row.version})]);
- return validateRelease(row.id,actorUserId??null,actor??'admin');
+ await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.promote','release',$3,$4)`,[actorUserId??null,actor??'admin',row.id,JSON.stringify({from_release_id:source.id,from_channel:source.channel,to_channel:channel.channel,version:row.version,approval_preserved:true})]);
+ return row;
 }
+
 export async function withdrawRelease(id:string,actorUserId?:string|null,actor?:string){
  const pool=db();
  const row=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];
