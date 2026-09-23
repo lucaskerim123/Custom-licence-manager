@@ -98,7 +98,7 @@ export default async function BaseDeployment() {
                     <Link href={'/releases/' + r.id} className="release-title-link"><h3>{r.version}</h3></Link>
                     <div className="tag-row"><span className={state === 'ready' ? 'badge ok' : state === 'blocked' ? 'badge off' : 'badge'}>{state}</span><span className={r.status === 'published' ? 'badge ok' : 'badge'}>{r.status}</span><span className={r.review_status === 'approved' ? 'badge ok' : r.review_status === 'rejected' ? 'badge off' : 'badge'}>review {r.review_status}</span><span className={v.status === 'passed' ? 'badge ok' : v.status === 'failed' ? 'badge off' : 'badge'}>validation {v.status}</span></div>
                   </div>
-                  <ReleaseQueueActions id={r.id} reviewStatus={r.review_status} validationStatus={v.status} published={r.status === 'published'} archived={archived} />
+                  <ReleaseQueueActions id={r.id} reviewStatus={r.review_status} validationStatus={v.status} published={r.status === 'published'} archived={archived} releaseType="base" />
                 </div>
                 <div className="release-meta release-meta-base">
                   <div><small className="muted">Source</small><strong>{r.source_repo || '—'}</strong><span>{r.source_ref || '—'}</span></div>
