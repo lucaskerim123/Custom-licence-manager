@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../../lib/auth';
 import {db} from '../../../../../lib/db';
-import {archiveRelease,deleteRelease,publishRelease,promoteRelease,rollbackBaseRelease,setReleaseReview,updateReleasePresentation,withdrawRelease} from '../../../../../lib/core/releases';
+import {archiveRelease,deleteRelease,publishRelease,promoteRelease,rollbackBaseRelease,setReleaseReview,createPresentationRevision,updateReleasePresentation,withdrawRelease} from '../../../../../lib/core/releases';
 
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   const auth=await integrationAuthorized(request,'releases.read');
@@ -31,6 +31,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     if(action==='delete')return NextResponse.json({release:await deleteRelease(id,undefined,`api:${auth.name}`)});
     if(action==='approve'||action==='reject')return NextResponse.json({release:await setReleaseReview(id,action==='approve'?'approved':'rejected',undefined,`api:${auth.name}`,body.reason)});
     if(action==='promote')return NextResponse.json({release:await promoteRelease(id,String(body.target_channel||body.targetChannel||'').trim().toLowerCase(),undefined,`api:${auth.name}`)});
+    if(action==='revise')return NextResponse.json({release:await createPresentationRevision(id,body,undefined,`api:${auth.name}`)});
     if(action==='rollback')return NextResponse.json({release:await rollbackBaseRelease(id,undefined,`api:${auth.name}`)});
     return NextResponse.json({error:'UNSUPPORTED_RELEASE_ACTION'},{status:400});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release action failed',code:'RELEASE_ACTION_FAILED'},{status:400});}
