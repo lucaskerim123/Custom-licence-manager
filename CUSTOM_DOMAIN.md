@@ -3,13 +3,13 @@
 The License Master deployment uses one application with two public hostnames:
 
 - Admin panel UI: `https://panel.incendiarynetworks.cc`
-- External API: `https://incendiarynetworks.cc/api`
+- External API: `https://incendiarynetworks.cc/api/v1`
 
 Both hostnames must point to the same Vercel deployment of `Custom-licence-manager`. The API hostname is the canonical authority for customer license authorization and release-system integrations.
 
 ## API contract
 
-The external API is rooted at `/api` and all external integration endpoints use the versioned `/api/v1` namespace:
+The canonical external integration API is rooted at `/api/v1`:
 
 - `GET /api/v1/license/health` — authenticated/internal health
 - `POST /api/v1/license` — issue a license
@@ -26,7 +26,7 @@ The external API is rooted at `/api` and all external integration endpoints use 
 
 There are also internal License Manager admin/auth/operations routes under `/api/*`. Those are application-internal control-plane endpoints, not the external License Master integration contract. They must not be confused with or substituted for the versioned public integration API.
 
-The admin UI is not the API authority URL. Billing Store, OrbitFS Base/license controller, release/deployer clients, and other external systems should use `https://incendiarynetworks.cc/api` as their License Master API base. The browser-facing License Master administration interface should use `https://panel.incendiarynetworks.cc`.
+The admin UI is not the API authority URL. Billing Store, OrbitFS Base/license controller, release/deployer clients, and other external systems should use `https://incendiarynetworks.cc/api/v1` as their License Master API base. The browser-facing License Master administration interface should use `https://panel.incendiarynetworks.cc`.
 
 ## Vercel
 
