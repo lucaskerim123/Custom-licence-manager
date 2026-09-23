@@ -2,10 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '../../../lib/session';
+import { db } from '../../../lib/db';
 import {
   archiveRelease,
   deleteRelease,
   promoteRelease,
+  publishRelease,
   rollbackBaseRelease,
   withdrawRelease,
   setReleaseReview,
@@ -150,6 +152,18 @@ export async function runReleaseAction(
         checks,
         checkedAt: validation.checked_at,
       };
+    }
+
+    if (action === 'publish') {
+      const release = (await db().query('select release_type from releases where id=$1 limit 1', [id])).rows[0];
+      if (!release) return { ok: false, message: 'Release not found.' };
+      if (release.release_type !== 'base') {
+        return { ok: false, message: 'Update releases are published by Billing Store after License Manager technical approval.' };
+      }
+      const row = await publishRelease(id, user.id, user.email);
+      if (!row) return { ok: false, message: 'Release could not be published.' };
+      refreshRelease(id);
+      return { ok: true, message: 'Base release published. It is now available to the customer-facing Base deployment flow.' };
     }
 
     if (action === 'withdraw') {
