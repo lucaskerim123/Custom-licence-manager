@@ -37,6 +37,14 @@ export async function POST(request: Request) {
   if (!channelRow) return NextResponse.json({ error: 'CHANNEL_NOT_FOUND' }, { status: 404 });
   if (!channelRow.enabled || !channelRow.customer_visible) return NextResponse.json({ error: 'CHANNEL_UNAVAILABLE' }, { status: 409 });
 
+  if (action === 'list_access') {
+    const rows = (await db().query(
+      `select * from release_channel_access where license_id=$1 order by channel`,
+      [licenseId],
+    )).rows;
+    return NextResponse.json({ access: rows });
+  }
+
   if (action === 'list_requests') {
     const rows = (await db().query(
       `select * from release_channel_access_requests where license_id=$1 order by requested_at desc`,
