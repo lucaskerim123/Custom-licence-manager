@@ -73,6 +73,14 @@ export default function ReleaseControls({
         </form>
       )}
 
+      {!published && !archived && releaseType === 'base' && reviewStatus === 'approved' && validationStatus === 'passed' && (
+        <form action={action} onSubmit={(e) => { if (!confirm('Publish this validated Base release to the customer Base deployment flow?')) e.preventDefault(); }}>
+          <input type="hidden" name="id" value={id} />
+          <input type="hidden" name="action" value="publish" />
+          <button className="button" disabled={pending}>Publish Base</button>
+        </form>
+      )}
+
       {published && releaseType === 'base' && (
         <>
           <form action={action} onSubmit={(e) => { if (!confirm('Withdraw this published Base deployment? It will stop being active and can then be archived/deleted.')) e.preventDefault(); }}>
