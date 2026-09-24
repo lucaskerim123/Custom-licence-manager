@@ -13,6 +13,8 @@ export async function POST(request:Request){
   const phase=String(body?.phase||'authorize').toLowerCase();
   const releaseId=String(body?.releaseId||body?.release_id||'').trim();
   const installationId=String(body?.installationId||body?.installation_id||'').trim();
+  const rollbackScope=String(body?.rollbackScope||body?.rollback_scope||'base').trim().toLowerCase();
+  const updateRollback=action==='rollback'&&rollbackScope==='update';
   if(phase==='sync')return NextResponse.json({ok:false,code:'CUSTOMER_DEPLOYER_EXECUTION_REQUIRED',error:'Provider status checks are executed by the customer deployer; License Manager does not accept customer provider credentials.'},{status:409});
   if(!releaseId)return NextResponse.json({ok:false,code:'RELEASE_ID_REQUIRED'},{status:400});
   if(!['deploy','update','redeploy','rollback'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_DEPLOYMENT_ACTION'},{status:400});
@@ -21,8 +23,12 @@ export async function POST(request:Request){
   if(!settings?.system_enabled||!settings.deployment_enabled)return NextResponse.json({ok:false,code:'AUTHORITY_UNAVAILABLE'},{status:503});
   const release=(await db().query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0];
   if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
-  if(release.status!=='published'||release.review_status!=='approved'||release.archived_at)return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
-  const expectedReleaseType=action==='update'?'update':'base';
+  if(updateRollback){
+    if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
+  }else if(release.status!=='published'||release.review_status!=='approved'||release.archived_at){
+    return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
+  }
+  const expectedReleaseType=action==='update'||updateRollback?'update':'base';
   if(String(release.release_type)!==expectedReleaseType)return NextResponse.json({ok:false,code:'RELEASE_TYPE_ACTION_MISMATCH'},{status:409});
   const requestedChannel=String(body?.channel||body?.releaseChannel||body?.release_channel||'').trim().toLowerCase();
   if(requestedChannel&&requestedChannel!==String(release.channel||'').trim().toLowerCase())return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_ACTION_MISMATCH'},{status:409});
@@ -37,7 +43,7 @@ export async function POST(request:Request){
     if(!activation&&action!=='deploy')return NextResponse.json({ok:false,code:'INSTALLATION_NOT_REGISTERED'},{status:403});
   }
   const channel=String(release.channel||'stable');
-  if(channel!=='stable'){
+  if(channel!=='stable'&&!updateRollback){
     const policy=(await db().query('select access_mode,enabled from release_channels where channel=$1 limit 1',[channel])).rows[0];
     if(!policy?.enabled)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_DISABLED'},{status:409});
     if(policy.access_mode==='closed'){
@@ -45,7 +51,7 @@ export async function POST(request:Request){
       if(!access)return NextResponse.json({ok:false,code:'LICENSE_CHANNEL_ACCESS_DENIED'},{status:403});
     }
   }
-  const details={action,phase,installationId:installationId||null,licenseId,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
+  const details={action,phase,rollbackScope:updateRollback?'update':'base',installationId:installationId||null,licenseId,releaseVersion:release.version,product:release.product,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
   await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor.actor||'deployer',`deployment.${phase}`,release.id,JSON.stringify(details)]);
   if(installationId){
     await recordInstallationCheckIn({licenseId,installationId,action:action as any,phase:phase==='authorize'?'started':phase==='completed'?'completed':'failed',product:release.product,productVersion:body?.productVersion?String(body.productVersion):release.version,previousVersion:body?.previousVersion?String(body.previousVersion):null,releaseId:release.id,deploymentId:details.deploymentId?String(details.deploymentId):null,deploymentUrl:details.deploymentUrl?String(details.deploymentUrl):null,projectId:details.projectId?String(details.projectId):null,projectName:details.projectName?String(details.projectName):null,provider:body?.provider?String(body.provider):'vercel',region:body?.region?String(body.region):null,platform:body?.platform?String(body.platform):'vercel',architecture:body?.architecture?String(body.architecture):null,hostname:body?.hostname?String(body.hostname):null,client:body?.client?String(body.client):'orbitfs-deployer',clientVersion:body?.clientVersion?String(body.clientVersion):null,sourceIp:requestIp(request),userAgent:request.headers.get('user-agent'),customerIdentity:details.customerIdentity,details:{components:body?.components&&typeof body.components==='object'?body.components:{},deploymentStatus:phase}});
