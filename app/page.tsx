@@ -30,68 +30,73 @@ export default async function Home(){
  await requireUser();
  const s=await stats();
  const online=Boolean(s.settings?.system_enabled);
- const services=[
-  ['Licensing',Boolean(s.settings?.licensing_enabled),'Runtime validation and issuance'],
-  ['Release authority',Boolean(s.settings?.release_system_enabled),'Intake, validation and technical state'],
-  ['Deployment authorization',Boolean(s.settings?.deployment_enabled),'Customer deployer authorization'],
-  ['Maintenance',Boolean(s.settings?.maintenance_mode),'Controlled validation maintenance']
+ const maintenance=Boolean(s.settings?.maintenance_mode);
+ const apiStates=[
+  ['External API',online,online?'Online':'Offline','Master authority'],
+  ['Licensing API',online&&Boolean(s.settings?.licensing_enabled)&&!maintenance,maintenance?'Maintenance':Boolean(s.settings?.licensing_enabled)?'Online':'Offline','Validation & issuance'],
+  ['Release API',online&&Boolean(s.settings?.release_system_enabled),Boolean(s.settings?.release_system_enabled)?'Online':'Offline','Release intake & state'],
+  ['Deployment API',online&&Boolean(s.settings?.deployment_enabled),Boolean(s.settings?.deployment_enabled)?'Online':'Offline','Authorization']
  ] as const;
  const dayMap=new Map(s.activity.map((x:any)=>[String(x.activity_day).slice(0,10),Number(x.count)]));
  const days=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const key=d.toISOString().slice(0,10);return {key,label:d.toLocaleDateString(undefined,{weekday:'short'}),count:dayMap.get(key)||0};});
  const max=Math.max(1,...days.map(x=>x.count));
 
- return <div className="shell"><SideNav active="overview"/><main className="main">
-  <PageHeader eyebrow="Authority Control Plane" title="License Manager" description="Live technical authority for licensing, release validation, deployment authorization and enforcement." badge={online?'LIVE':'OFFLINE'}/>
+ return <div className="shell"><SideNav active="overview"/><main className="main dashboard-main">
+  <PageHeader eyebrow="Authority Control Plane" title="License Manager" description="Quick operational view of licensing, release and deployment authority." badge={online?'LIVE':'OFFLINE'}/>
 
-  <div className="overview-status-row">
-   <div className={online?'health-banner healthy':'health-banner offline'}>
-    <div><span className={online?'status-light online':'status-light offline'}/><strong>{online?'Authority is healthy':'External authority is offline'}</strong></div>
-    <p>{online?'Licensing and release authority are available according to the controls below.':'The admin panel remains available while external authority requests are rejected.'}</p>
-   </div>
-   <Link href="/settings" className="button secondary">Open API control</Link>
-  </div>
+  <section className={online?'dashboard-health healthy':'dashboard-health offline'}>
+   <div><span className={online?'status-light online':'status-light offline'}/><div><strong>{online?'Authority online':'Authority offline'}</strong><small>{maintenance?'Maintenance mode is active.':'Current external API posture.'}</small></div></div>
+   <Link href="/settings" className="button secondary">API control</Link>
+  </section>
 
-  <div className="grid dashboard-metrics">
-   <Link href="/licenses" className="card metric-card link-card"><div className="metric-icon icon-indigo">◇</div><div><span className="metric-label">Licenses</span><strong className="metric">{s.licenses}</strong><small>{s.activations} active installations</small></div></Link>
+  <section className="dashboard-api-strip" aria-label="API status">
+   {apiStates.map(([name,healthy,label,detail])=><div className="dashboard-api-status" key={name}>
+    <span className={label==='Maintenance'?'status-light warning':healthy?'status-light online':'status-light offline'}/>
+    <div><strong>{name}</strong><small>{detail}</small></div>
+    <span className={label==='Maintenance'?'state-pill warning':healthy?'state-pill online':'state-pill offline'}>{label}</span>
+   </div>)}
+  </section>
+
+  <div className="grid dashboard-metrics dashboard-metrics-compact">
+   <Link href="/licenses" className="card metric-card link-card"><div className="metric-icon icon-indigo">◇</div><div><span className="metric-label">Licences</span><strong className="metric">{s.licenses}</strong><small>{s.activations} active installs</small></div></Link>
    <Link href="/releases" className="card metric-card link-card"><div className="metric-icon icon-blue">↻</div><div><span className="metric-label">Pending releases</span><strong className="metric">{s.pending}</strong><small>{s.published} published</small></div></Link>
-   <Link href="/releases" className="card metric-card link-card"><div className="metric-icon icon-red">!</div><div><span className="metric-label">Validation blockers</span><strong className="metric">{s.failed}</strong><small>{s.failed===0?'No active blockers':'Requires technical review'}</small></div></Link>
-   <Link href="/products" className="card metric-card link-card"><div className="metric-icon icon-green">◈</div><div><span className="metric-label">Products</span><strong className="metric">{s.products}</strong><small>Authority product definitions</small></div></Link>
+   <Link href="/releases" className="card metric-card link-card"><div className="metric-icon icon-red">!</div><div><span className="metric-label">Blockers</span><strong className="metric">{s.failed}</strong><small>{s.failed===0?'Clear':'Needs review'}</small></div></Link>
+   <Link href="/products" className="card metric-card link-card"><div className="metric-icon icon-green">◈</div><div><span className="metric-label">Products</span><strong className="metric">{s.products}</strong><small>Authority definitions</small></div></Link>
   </div>
 
-  <div className="dashboard-grid section">
-   <section className="card chart-card">
-    <div className="section-head"><div><div className="eyebrow">Live activity</div><h2>Authority activity</h2><p className="muted">Audited control-plane actions over the last seven days.</p></div><span className="header-badge">7 DAYS</span></div>
-    <div className="bar-chart" aria-label="Authority activity over seven days">
-      {days.map(day=><div className="bar-column" key={day.key}><div className="bar-value">{day.count}</div><div className="bar-track"><div className="bar-fill" style={{height:`${Math.max(6,Math.round((day.count/max)*100))}%`}}/></div><span>{day.label}</span></div>)}
+  <div className="dashboard-collapsible-grid section">
+   <details className="card dashboard-panel">
+    <summary><div><div className="eyebrow">Analytics</div><strong>Authority activity</strong><small>7-day audited activity</small></div><span className="dashboard-chevron">⌄</span></summary>
+    <div className="dashboard-panel-body">
+     <div className="bar-chart" aria-label="Authority activity over seven days">{days.map(day=><div className="bar-column" key={day.key}><div className="bar-value">{day.count}</div><div className="bar-track"><div className="bar-fill" style={{height:Math.max(6,Math.round((day.count/max)*100))+'%'}}/></div><span>{day.label}</span></div>)}</div>
     </div>
-   </section>
+   </details>
 
-   <section className="card control-summary-card">
-    <div className="section-head"><div><div className="eyebrow">Runtime</div><h2>API controls</h2><p className="muted">Current authoritative state.</p></div><Link href="/settings" className="text-link">Manage</Link></div>
-    <div className="service-list">
-      {services.map(([name,value,detail])=><div className="service-row" key={name}><span className={name==='Maintenance'&&value?'status-light warning':value?'status-light online':'status-light offline'}/><div><strong>{name}</strong><small>{detail}</small></div><span className={name==='Maintenance'&&value?'state-pill warning':value?'state-pill online':'state-pill offline'}>{name==='Maintenance'?(value?'Active':'Normal'):(value?'Live':'Off')}</span></div>)}
-    </div>
-    <div className="pulse-strip"><span>Pulse revision</span><strong>#{Number(s.settings?.pulse_revision||0)}</strong><small>{s.settings?.pulse_at?new Date(s.settings.pulse_at).toLocaleString():'No pulse yet'}</small></div>
-   </section>
-  </div>
-
-  <div className="dashboard-grid section">
-   <section className="card">
-    <div className="section-head"><div><div className="eyebrow">Operations</div><h2>Control center</h2></div></div>
-    <div className="quick-control-grid">
+   <details className="card dashboard-panel">
+    <summary><div><div className="eyebrow">Operations</div><strong>Quick actions</strong><small>Jump into authority workflows</small></div><span className="dashboard-chevron">⌄</span></summary>
+    <div className="dashboard-panel-body">
+     <div className="quick-control-grid">
       <Link href="/releases/base" className="quick-control"><span className="quick-icon">↳</span><div><strong>Base Deployment</strong><small>Validate and publish Base releases</small></div><b>→</b></Link>
-      <Link href="/releases" className="quick-control"><span className="quick-icon">↻</span><div><strong>Release Updates</strong><small>Review Engine update candidates</small></div><b>→</b></Link>
-      <Link href="/licenses" className="quick-control"><span className="quick-icon">◇</span><div><strong>Licensing</strong><small>Issue and control customer licenses</small></div><b>→</b></Link>
-      <Link href="/installations" className="quick-control"><span className="quick-icon">▣</span><div><strong>Installations</strong><small>Inspect runtime and deployment state</small></div><b>→</b></Link>
+      <Link href="/releases" className="quick-control"><span className="quick-icon">↻</span><div><strong>Release Updates</strong><small>Review Engine candidates</small></div><b>→</b></Link>
+      <Link href="/licenses" className="quick-control"><span className="quick-icon">◇</span><div><strong>Licensing</strong><small>Issue and control licences</small></div><b>→</b></Link>
+      <Link href="/installations" className="quick-control"><span className="quick-icon">▣</span><div><strong>Installations</strong><small>Inspect runtime state</small></div><b>→</b></Link>
+     </div>
     </div>
-   </section>
+   </details>
 
-   <section className="card recent-card">
-    <div className="section-head"><div><div className="eyebrow">Audit stream</div><h2>Recent activity</h2></div></div>
-    <div className="activity-list">
-      {s.recent.length===0?<div className="empty-state"><strong>No audit activity</strong><span>Authority actions will appear here.</span></div>:s.recent.map((item:any,index:number)=><div className="activity-row" key={index}><span className="activity-dot"/><div><strong>{String(item.action).replaceAll('.',' ')}</strong><small>{item.actor||'system'} · {item.resource_type}</small></div><time>{new Date(item.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></div>)}
+   <details className="card dashboard-panel">
+    <summary><div><div className="eyebrow">Audit</div><strong>Recent activity</strong><small>{s.recent.length} latest authority events</small></div><span className="dashboard-chevron">⌄</span></summary>
+    <div className="dashboard-panel-body">
+     <div className="activity-list">{s.recent.length===0?<div className="empty-state"><strong>No audit activity</strong><span>Authority actions will appear here.</span></div>:s.recent.map((item:any,index:number)=><div className="activity-row" key={index}><span className="activity-dot"/><div><strong>{String(item.action).replaceAll('.',' ')}</strong><small>{item.actor||'system'} · {item.resource_type}</small></div><time>{new Date(item.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time></div>)}</div>
     </div>
-   </section>
+   </details>
+
+   <details className="card dashboard-panel">
+    <summary><div><div className="eyebrow">Runtime</div><strong>Pulse status</strong><small>Authority cache recheck state</small></div><span className="dashboard-chevron">⌄</span></summary>
+    <div className="dashboard-panel-body">
+     <div className="pulse-strip"><span>Pulse revision</span><strong>#{Number(s.settings?.pulse_revision||0)}</strong><small>{s.settings?.pulse_at?new Date(s.settings.pulse_at).toLocaleString():'No pulse yet'}</small></div>
+    </div>
+   </details>
   </div>
  </main></div>;
 }
