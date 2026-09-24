@@ -24,7 +24,7 @@ The canonical external integration API is rooted at `/api/v1`:
 - `GET|POST /api/v1/updater` — customer update/base release retrieval
 - `POST /api/v1/deployer` — deployment authorization and deployment telemetry
 
-There are also internal License Manager admin/auth/operations routes under `/api/*`. Those are application-internal control-plane endpoints, not the external License Master integration contract. They must not be confused with or substituted for the versioned public integration API.
+There are also internal License Manager admin/auth routes under `/api/*`. Those are application-internal control-plane endpoints, not the external License Master integration contract. They must not be confused with or substituted for the versioned public integration API.
 
 The admin UI is not the API authority URL. Billing Store, OrbitFS Base/license controller, release/deployer clients, and other external systems should use `https://incendiarynetworks.cc/api/v1` as their License Master API base. The browser-facing License Master administration interface should use `https://panel.incendiarynetworks.cc`.
 
