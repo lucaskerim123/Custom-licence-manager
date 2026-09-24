@@ -11,7 +11,7 @@ export default async function Installations({searchParams}:{searchParams:Promise
  const user=await requireUser();
  const params=await searchParams;
  const license=String(params?.license||'').trim();
- const query=\`select a.id,a.installation_id,a.product_version,a.status,a.first_seen_at,a.last_seen_at,a.last_ip,a.last_user_agent,a.last_hostname,a.last_platform,a.last_architecture,a.last_client,a.last_client_version,a.last_provider,a.last_region,a.last_deployment_id,a.last_deployment_url,a.last_deployment_status,a.last_operation,a.deployment_count,a.current_components,a.metadata,l.id license_id,l.license_key_last4,l.status license_status,l.customer_external_id,p.slug product,p.name product_name from activations a join licenses l on l.id=a.license_id join products p on p.id=l.product_id \${license?'where l.id=$1':''} order by a.last_seen_at desc limit 500\`;
+ const query=`select a.id,a.installation_id,a.product_version,a.status,a.first_seen_at,a.last_seen_at,a.last_ip,a.last_user_agent,a.last_hostname,a.last_platform,a.last_architecture,a.last_client,a.last_client_version,a.last_provider,a.last_region,a.last_deployment_id,a.last_deployment_url,a.last_deployment_status,a.last_operation,a.deployment_count,a.current_components,a.metadata,l.id license_id,l.license_key_last4,l.status license_status,l.customer_external_id,p.slug product,p.name product_name from activations a join licenses l on l.id=a.license_id join products p on p.id=l.product_id ${license?'where l.id=$1':''} order by a.last_seen_at desc limit 500`;
  const rows=(await db().query(query,license?[license]:[])).rows;
  const statuses=[...new Set(rows.map((x:any)=>x.status))];
  const active=rows.filter((x:any)=>x.status==='active').length;
