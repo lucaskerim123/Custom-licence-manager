@@ -36,6 +36,16 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       return NextResponse.json({release:await rollbackBaseRelease(id,undefined,`api:${control.name}`)});
     }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Technical release control failed',code:'TECHNICAL_RELEASE_CONTROL_FAILED'},{status:400});}
   }
+  if(['withdraw','archive','restore'].includes(action)){
+    const control=await integrationAuthorized(request,'releases.control');
+    if(control){
+      try{
+        if(action==='withdraw')return NextResponse.json({release:await withdrawRelease(id,undefined,`api:${control.name}`)});
+        if(action==='archive')return NextResponse.json({release:await archiveRelease(id,true,undefined,`api:${control.name}`)});
+        return NextResponse.json({release:await archiveRelease(id,false,undefined,`api:${control.name}`)});
+      }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release lifecycle control failed',code:'RELEASE_LIFECYCLE_CONTROL_FAILED'},{status:400});}
+    }
+  }
   if(current.release_type!=='update'){
     return NextResponse.json({error:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER',code:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER'},{status:403});
   }
