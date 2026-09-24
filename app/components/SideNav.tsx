@@ -6,7 +6,7 @@ import {useState} from 'react';
 const groups=[
  {label:'Overview',items:[['overview','/','Dashboard','⌂']]},
  {label:'Authority',items:[['licenses','/licenses','Licensing','◇'],['installations','/installations','Installations','▣']]},
- {label:'Release operations',items:[['base','/releases/base','Base Deployment','↳'],['releases','/releases','Release Updates','↻'],['channels','/releases/channels','Release Channels','≡'],['channel-access','/releases/channels/access','Channel Access','⇄']]},
+ {label:'Release operations',items:[['base','/releases/base','Base Deployment','↳'],['releases','/releases','Release Updates','↻'],['channels','/releases/channels','Release Channels','≡']]},
  {label:'System',items:[['products','/products','Products','◈'],['users','/users','Users','●'],['settings','/settings','API Control','⚡'],['api-keys','/api-keys','API Access','⌁'],['api','/api-docs','API Contract','</>']]}
 ] as const;
 

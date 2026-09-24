@@ -7,6 +7,6 @@ export default function DeleteLicenseButton({action,licenseId}:{action:(formData
   return <form action={action} onSubmit={submit}>
     <input type="hidden" name="id" value={licenseId}/>
     <input type="hidden" name="action" value="delete"/>
-    <button className="button danger">Delete</button>
+    <button className="button danger license-action-button">Delete license</button>
   </form>;
 }

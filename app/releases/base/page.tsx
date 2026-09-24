@@ -83,7 +83,7 @@ export default async function BaseDeployment() {
           <div><div className="eyebrow">Authoritative queue</div><h2>Base candidates</h2><p className="muted">The release worker submits the package and release metadata. Nothing becomes publishable here until all technical checks pass and an operator approves it.</p></div>
           <div className="queue-header-actions"><span className="badge">{releases.length} total</span><Link className="button secondary" href="/releases">View updates</Link></div>
         </div>
-        <TableTools targetId="base-release-list" filters={['pending','approved','rejected','published']} />
+        <TableTools targetId="base-release-list" filters={['pending','approved','rejected','published']} pageSize={3} />
 
         <div id="base-release-list" className="release-list">
           {releases.length === 0 ? <div className="empty-state"><strong>No Base candidates yet</strong><span>When the first V1 Base workflow completes its License Manager handoff, the candidate will appear here.</span></div> :
@@ -91,7 +91,7 @@ export default async function BaseDeployment() {
               const v = validation(r);
               const archived = Boolean(r.archived_at);
               const state = archived ? 'archived' : r.status === 'published' ? 'published' : v.status === 'failed' || r.review_status === 'rejected' ? 'blocked' : r.review_status === 'approved' ? 'ready' : v.status === 'passed' ? 'validated' : 'needs validation';
-              return <article className={archived ? 'release-item release-item-archived' : 'release-item'} data-row data-filter={r.review_status} data-search={`${r.version} ${r.channel} ${r.status} ${r.review_status} ${v.status} ${r.source_repo || ''} ${r.source_ref || ''} ${r.source_sha || ''}`} key={r.id}>
+              return <article className={archived ? 'release-item release-item-archived' : 'release-item'} data-row data-filter={`${r.review_status} ${r.status}`} data-search={`${r.version} ${r.channel} ${r.status} ${r.review_status} ${v.status} ${r.source_repo || ''} ${r.source_ref || ''} ${r.source_sha || ''}`} key={r.id}>
                 <div className="release-item-top">
                   <div className="release-primary">
                     <div className="eyebrow">OrbitFS Base · {r.channel}</div>

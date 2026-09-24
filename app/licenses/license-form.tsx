@@ -2,27 +2,61 @@
 import {useActionState,useEffect,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {issueLicenseAction,rotateLicenseAction} from './actions';
+
 const initial={ok:false,key:'',error:''};
+
+function KeyReveal({title,keyValue,detail,onClose}:{title:string;keyValue:string;detail:string;onClose:()=>void}){
+ if(typeof document==='undefined')return null;
+ const copy=()=>void navigator.clipboard?.writeText(keyValue);
+ return createPortal(
+  <div className="key-reveal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+   <section className="key-reveal-dialog" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="key-reveal-head">
+     <div><div className="eyebrow">One-time credential</div><h2>{title}</h2></div>
+     <button type="button" className="key-reveal-close" onClick={onClose} aria-label="Close">×</button>
+    </div>
+    <p className="muted">{detail}</p>
+    <div className="license-key key-reveal-value">{keyValue}</div>
+    <div className="key-reveal-actions">
+     <button type="button" className="button" onClick={copy}>Copy license key</button>
+     <button type="button" className="button secondary" onClick={onClose}>Close</button>
+    </div>
+    <small className="muted">This plaintext key is not stored and will not be shown again after this dialog is closed.</small>
+   </section>
+  </div>,
+  document.body
+ );
+}
+
 export function RotateLicenseButton({licenseId}:{licenseId:string}){
  const[state,action,pending]=useActionState(rotateLicenseAction,initial);
  const[dismissed,setDismissed]=useState(false);
- const keyVisible=Boolean(state.ok&&state.key&&!dismissed);
  useEffect(()=>{if(state.key)setDismissed(false)},[state.key]);
- return <><form action={action}><input type="hidden" name="id" value={licenseId}/><input type="hidden" name="action" value="rotate"/><button className="button secondary" disabled={pending}>{pending?'Rotating…':'Rotate'}</button></form>
- {state.error&&<div className="notice dangerBox" style={{position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',zIndex:1000,maxWidth:'min(720px,calc(100vw - 32px))',width:'fit-content'}}>{state.error}</div>}
- {keyVisible&&typeof document!=='undefined'&&createPortal(<div className="notice okBox" role="status" aria-live="polite" style={{position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',zIndex:1000,width:'min(760px,calc(100vw - 32px))',padding:20,boxSizing:'border-box',boxShadow:'0 12px 36px rgba(0,0,0,.28)'}}>
- <div style={{minWidth:0}}><strong style={{display:'block',fontSize:'1.05rem'}}>NEW LICENSE KEY</strong><small className="muted">License ID: <span className="mono">{licenseId}</span></small>
- <p className="muted" style={{margin:'8px 0'}}>This replacement key is shown once. Copy it now. Closing this box removes it from the page until the next rotation.</p>
- <div className="license-key" style={{wordBreak:'break-all',fontSize:'1.1rem',padding:12,margin:'10px 0',userSelect:'all'}}>{state.key}</div>
- <div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button type="button" onClick={()=>void navigator.clipboard?.writeText(state.key)}>Copy new key</button><button type="button" className="secondary" onClick={()=>setDismissed(true)}>Close</button></div></div>
- </div>,document.body)}</>
+ return <>
+  <form action={action}>
+   <input type="hidden" name="id" value={licenseId}/>
+   <input type="hidden" name="action" value="rotate"/>
+   <button className="button secondary license-action-button" disabled={pending}>{pending?'Rotating…':'Rotate key'}</button>
+  </form>
+  {state.error&&<div className="notice dangerBox floating-notice">{state.error}</div>}
+  {state.ok&&state.key&&!dismissed&&<KeyReveal title="New license key" keyValue={state.key} detail={`License ${licenseId} has been rotated. Copy the replacement key before closing this dialog.`} onClose={()=>setDismissed(true)}/>}
+ </>;
 }
+
 export default function LicenseForm({products}:{products:{id:string,name:string}[]}){
  const[state,action,pending]=useActionState(issueLicenseAction,initial);
- return <section className="card form-card"><div className="section-head"><div><h2>Issue license</h2><p className="muted">Create a license directly in the authority. The plaintext key is returned once.</p></div><span className="badge">MASTER</span></div>
- <form className="form form-grid-2" action={action}><label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
- <label>Customer external ID<input className="input" name="customer" placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
- <label>External reference<input className="input" name="reference" placeholder="Order / subscription reference"/></label><label>Expiry<input className="input" name="expires" type="datetime-local"/></label>
- <div className="form-actions"><button className="button" disabled={pending}>{pending?'Issuing…':'Issue license'}</button></div></form>
- {state.error&&<div className="notice dangerBox" style={{marginTop:12}}>{state.error}</div>}{state.ok&&state.key&&<div className="notice okBox" style={{marginTop:12}}><strong>License issued — copy the key now.</strong><div className="license-key" style={{wordBreak:'break-all',userSelect:'all'}}>{state.key}</div><small className="muted">The plaintext key is not stored in the database.</small></div>}</section>
+ const[dismissed,setDismissed]=useState(false);
+ useEffect(()=>{if(state.key)setDismissed(false)},[state.key]);
+ return <section className="card form-card critical-form">
+  <div className="section-head"><div><h2>Issue license</h2><p className="muted">Create a license directly in the authority. The plaintext key is returned once.</p></div><span className="badge">MASTER</span></div>
+  <form className="form form-grid-2" action={action}>
+   <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+   <label>Customer external ID<input className="input" name="customer" placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
+   <label>External reference<input className="input" name="reference" placeholder="Order / subscription reference"/></label>
+   <label>Expiry<input className="input" name="expires" type="datetime-local"/></label>
+   <div className="form-actions"><button className="button" disabled={pending}>{pending?'Issuing…':'Issue license'}</button></div>
+  </form>
+  {state.error&&<div className="notice dangerBox" style={{marginTop:12}}>{state.error}</div>}
+  {state.ok&&state.key&&!dismissed&&<KeyReveal title="License issued" keyValue={state.key} detail="The license was created successfully. Copy the key now before closing this dialog." onClose={()=>setDismissed(true)}/>}
+ </section>;
 }

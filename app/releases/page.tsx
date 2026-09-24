@@ -31,7 +31,7 @@ export default async function Releases(){
 
   <section className="section card">
    <div className="section-head"><div><div className="eyebrow">Authoritative queue</div><h2>Engine update candidates</h2><p className="muted">Every row is a real release record submitted by the Engine release builder. Open a candidate for its complete manifest, validation checks, artifact identity and audit history.</p></div><div className="queue-header-actions"><span className="badge">{active.length} active</span><Link className="button secondary" href="/releases/base">Base releases</Link></div></div>
-   <TableTools targetId="update-release-list" filters={['pending','approved','rejected','published']}/>
+   <TableTools targetId="update-release-list" filters={['pending','approved','rejected','published']} pageSize={3}/>
    <div id="update-release-list" className="release-list">
     {releases.length===0?<div className="empty-state"><strong>No update candidates</strong><span>Nothing has arrived from the Engine release workflow yet.</span></div>:releases.map((r:any)=>{
       const v=validation(r),archived=Boolean(r.archived_at),failed=v.status==='failed'||r.review_status==='rejected';
