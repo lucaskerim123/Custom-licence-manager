@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - Panel-Redesign
   workflow_dispatch:
 permissions:
   contents: read
