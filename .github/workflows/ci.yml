@@ -25,7 +25,7 @@ jobs:
       - name: Run complete production validation
         run: npm run preflight
       - name: Upload temporary validation failure report
-        if: ${{ always() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: validation-failure-${{ github.sha }}
