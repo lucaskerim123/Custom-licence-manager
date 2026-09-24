@@ -83,7 +83,7 @@ export default function ReleaseControls({
 
       {published && releaseType === 'base' && (
         <>
-          <form action={action} onSubmit={(e) => { if (!confirm('Withdraw this published Base deployment? It will stop being active and can then be archived/deleted.')) e.preventDefault(); }}>
+          <form action={action} onSubmit={(e) => { if (!confirm('Withdraw this published Base deployment? It will stop being active and can then be archived.')) e.preventDefault(); }}>
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="action" value="withdraw" />
             <button className="button danger" disabled={pending}>Withdraw deployment</button>
@@ -102,16 +102,6 @@ export default function ReleaseControls({
           <input type="hidden" name="action" value="archive" />
           <button className="button secondary" disabled={pending}>
             Archive
-          </button>
-        </form>
-      )}
-
-      {archived && (
-        <form action={action} onSubmit={(e) => { if (!confirm('Permanently delete this archived release? This cannot be undone.')) e.preventDefault(); }}>
-          <input type="hidden" name="id" value={id} />
-          <input type="hidden" name="action" value="delete" />
-          <button className="button danger" disabled={pending}>
-            Permanently delete
           </button>
         </form>
       )}
