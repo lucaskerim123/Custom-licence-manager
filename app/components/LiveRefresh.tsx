@@ -1,32 +1,39 @@
 "use client";
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
 
-export default function LiveRefresh({intervalMs=8000}:{intervalMs?:number}){
+export default function LiveRefresh({intervalMs=60000}:{intervalMs?:number}){
  const router=useRouter();
  const lastSyncRef=useRef(Date.now());
  const [busy,setBusy]=useState(false);
  const [seconds,setSeconds]=useState(0);
 
- useEffect(()=>{
-  const markSynced=()=>{lastSyncRef.current=Date.now();setSeconds(0)};
-  const refresh=()=>{if(document.visibilityState==='visible'){router.refresh();markSynced()}};
-  const timer=window.setInterval(refresh,intervalMs);
-  const tick=window.setInterval(()=>setSeconds(Math.floor((Date.now()-lastSyncRef.current)/1000)),1000);
-  window.addEventListener('focus',refresh);
-  document.addEventListener('visibilitychange',refresh);
-  return()=>{clearInterval(timer);clearInterval(tick);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)};
- },[router,intervalMs]);
-
- const manual=()=>{
-  setBusy(true);
+ const refresh=useCallback((force=false)=>{
+  if(document.visibilityState!=='visible')return;
+  const age=Date.now()-lastSyncRef.current;
+  if(!force&&age<Math.min(intervalMs,15000))return;
   router.refresh();
   lastSyncRef.current=Date.now();
   setSeconds(0);
+ },[router,intervalMs]);
+
+ useEffect(()=>{
+  const timer=window.setInterval(()=>refresh(true),intervalMs);
+  const tick=window.setInterval(()=>setSeconds(Math.floor((Date.now()-lastSyncRef.current)/1000)),1000);
+  const onFocus=()=>refresh(false);
+  const onVisible=()=>{if(document.visibilityState==='visible')refresh(false)};
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>{clearInterval(timer);clearInterval(tick);window.removeEventListener('focus',onFocus);document.removeEventListener('visibilitychange',onVisible)};
+ },[refresh,intervalMs]);
+
+ const manual=()=>{
+  setBusy(true);
+  refresh(true);
   window.setTimeout(()=>setBusy(false),600);
  };
 
- const syncLabel=seconds<2?'now':`${seconds}s`;
+ const syncLabel=seconds<2?'now':seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m`;
  return <div className="live-control">
   <span className="live-dot-indicator"/>
   <span className="live-label">Live <span className="muted">· synced <span className="live-age">{syncLabel}</span></span></span>
