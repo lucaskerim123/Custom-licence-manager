@@ -18,6 +18,8 @@ function publicState(s:any){
       system_enabled:Boolean(s?.system_enabled),
       licensing_enabled:Boolean(s?.licensing_enabled),
       maintenance_mode:Boolean(s?.maintenance_mode),
+      release_system_enabled:Boolean(s?.release_system_enabled),
+      deployment_enabled:Boolean(s?.deployment_enabled),
     },
   };
 }
