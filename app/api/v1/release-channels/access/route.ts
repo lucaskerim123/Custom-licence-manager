@@ -2,9 +2,67 @@ import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../lib/auth';
 import { db } from '../../../../../lib/db';
 
+async function ensureChannelAccessSchema(){
+  const database=db();
+  await database.query(`
+    alter table if exists public.release_channels
+      add column if not exists access_mode text not null default 'closed';
+    alter table if exists public.release_channels
+      add column if not exists access_request_enabled boolean not null default false;
+    alter table if exists public.release_channels
+      add column if not exists self_join_enabled boolean not null default false;
+
+    create table if not exists public.release_channel_access (
+      id uuid primary key default gen_random_uuid(),
+      license_id uuid not null references public.licenses(id) on delete cascade,
+      channel text not null references public.release_channels(channel) on delete cascade,
+      granted_by text,
+      external_reference text,
+      expires_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      unique(license_id,channel)
+    );
+
+    create table if not exists public.release_channel_access_requests (
+      id uuid primary key default gen_random_uuid(),
+      license_id uuid not null references public.licenses(id) on delete cascade,
+      channel text not null references public.release_channels(channel) on delete cascade,
+      external_reference text,
+      status text not null default 'pending'
+        check(status in ('pending','approved','rejected','cancelled')),
+      requested_at timestamptz not null default now(),
+      reviewed_at timestamptz,
+      reviewed_by text,
+      reason text
+    );
+
+    create unique index if not exists release_channel_access_requests_open_unique
+      on public.release_channel_access_requests(license_id,channel)
+      where status='pending';
+    create index if not exists release_channel_access_requests_channel_status_idx
+      on public.release_channel_access_requests(channel,status,requested_at desc);
+    create index if not exists release_channel_access_requests_license_idx
+      on public.release_channel_access_requests(license_id,status,requested_at desc);
+    create index if not exists release_channel_access_license_idx
+      on public.release_channel_access(license_id,channel);
+    create index if not exists release_channel_access_expiry_idx
+      on public.release_channel_access(channel,expires_at);
+  `);
+}
+
 export async function GET(request: Request) {
   const auth = await integrationAuthorized(request, 'releases.read');
   if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
+  try {
+    await ensureChannelAccessSchema();
+  } catch (error:any) {
+    console.error('release channel access schema check failed', error);
+    return NextResponse.json(
+      { error:'RELEASE_CHANNEL_SCHEMA_UNAVAILABLE', code:'RELEASE_CHANNEL_SCHEMA_UNAVAILABLE' },
+      { status:503 },
+    );
+  }
   const url = new URL(request.url);
   const channel = String(url.searchParams.get('channel') || '').trim().toLowerCase();
   const view = String(url.searchParams.get('view') || 'requests').trim().toLowerCase();
@@ -25,6 +83,16 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await integrationAuthorized(request, 'releases.write');
   if (!auth) return NextResponse.json({ error: 'UNAUTHORIZED', code: 'UNAUTHORIZED' }, { status: 401 });
+
+  try {
+    await ensureChannelAccessSchema();
+  } catch (error:any) {
+    console.error('release channel access schema check failed', error);
+    return NextResponse.json(
+      { error:'RELEASE_CHANNEL_SCHEMA_UNAVAILABLE', code:'RELEASE_CHANNEL_SCHEMA_UNAVAILABLE' },
+      { status:503 },
+    );
+  }
 
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || (body.revoke ? 'revoke' : 'grant')).trim().toLowerCase();
