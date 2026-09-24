@@ -114,8 +114,23 @@ async function scanPackage(row:any,bytes:Buffer){
     if(row.release_type==='base'){
       const packageDatabaseSchema=String(pkg.databaseSchemaVersion||pkg.releaseInfo?.databaseSchemaVersion||'').trim();
       const releaseDatabaseSchema=String(row.manifest?.databaseSchemaVersion||row.manifest?.releaseInfo?.databaseSchemaVersion||'').trim();
+      const schemaPath=String(pkg.databaseSchemaPath||pkg.releaseInfo?.databaseSchemaPath||'supabase/customer-schema.sql').trim();
+      const packageSchemaHash=String(pkg.databaseSchemaSha256||pkg.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
+      const releaseSchemaHash=String(row.manifest?.databaseSchemaSha256||row.manifest?.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
+      const schemaFile=files.find((file:any)=>String(file?.file||'')===schemaPath);
+      let actualSchemaHash='',schemaPayloadOk=false;
+      if(schemaFile?.data&&schemaFile?.encoding==='base64'){
+        const bytes=Buffer.from(schemaFile.data,'base64');
+        actualSchemaHash=createHash('sha256').update(bytes).digest('hex');
+        const sql=bytes.toString('utf8');
+        schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
+      }
+      const migrationCount=Number(pkg.databaseMigrationCount??pkg.releaseInfo?.databaseMigrationCount??0);
+      const latestMigration=String(pkg.databaseLatestMigration||pkg.releaseInfo?.databaseLatestMigration||'').trim();
+      const databaseSnapshotOk=Boolean(schemaPayloadOk&&packageSchemaHash&&releaseSchemaHash&&actualSchemaHash===packageSchemaHash&&packageSchemaHash===releaseSchemaHash&&Number.isInteger(migrationCount)&&migrationCount>0&&/^\d{14}$/.test(latestMigration));
       checks.push({key:'package_base_format',ok:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2,message:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2?'Base artifact uses orbitfs-base-deployment-v2.':'Base artifact must use orbitfs-base-deployment-v2 package schema 2.'});
       checks.push({key:'database_schema_version',ok:Boolean(packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema),message:packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema?`Base database schema version ${packageDatabaseSchema} is consistent.`:'Base artifact and release record must declare the same databaseSchemaVersion.'});
+      checks.push({key:'database_schema_snapshot',ok:databaseSnapshotOk,message:databaseSnapshotOk?`Base artifact contains the verified customer DB snapshot (${migrationCount} migrations, latest ${latestMigration}).`:'Base artifact must contain a checksummed supabase/customer-schema.sql generated from the authoritative migration chain.'});
     }
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
     const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
