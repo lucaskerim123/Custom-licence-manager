@@ -7,7 +7,7 @@ import AuthorityControlGrid from '../components/AuthorityControlGrid';
 
 export const dynamic='force-dynamic';
 
-const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','release_system_enabled','deployment_enabled'];
+const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
 
 async function updateSettings(formData:FormData){
  'use server';
@@ -48,24 +48,28 @@ export default async function Settings(){
   {field:'licensing_enabled',label:'License validation & issuance',help:'Controls license issuance and runtime validation. Turning this off makes license checks fail closed and sends a pulse so connected runtimes re-check authority.',onText:'Licensing is accepting validations',offText:'Licensing validations are blocked',enabled:Boolean(s.licensing_enabled)},
   {field:'maintenance_mode',label:'Maintenance enforcement',help:'Makes runtime validation deliberately unavailable while keeping the admin plane accessible. Offline grace remains governed by the runtime policy below.',onText:'Maintenance mode is active',offText:'Normal validation mode',dangerWhen:true,enabled:Boolean(s.maintenance_mode)},
   {field:'release_system_enabled',label:'Release authority',help:'Controls authoritative release intake, validation and state APIs. Billing Store publication remains a separate final gate.',onText:'Release authority is online',offText:'Release authority is blocked',enabled:Boolean(s.release_system_enabled)},
-  {field:'deployment_enabled',label:'Deployment authorization',help:'Controls License Manager deployment authorization and coordination. Customer deployers still perform execution in customer-owned environments.',onText:'Deployment authorization is online',offText:'Deployment authorization is blocked',enabled:Boolean(s.deployment_enabled)}
+  {field:'deployment_enabled',label:'Deployment authorization',help:'Master deployment authorization gate. Turning this off blocks Base, Update and rollback authorization while customer deployers remain the execution layer.',onText:'Deployment authorization is online',offText:'All deployment authorization is blocked',enabled:Boolean(s.deployment_enabled)},
+  {field:'base_deployment_enabled',label:'Base deployment authorization',help:'Allows customer Base install and redeploy authorization. Billing Store does not own this technical gate.',onText:'Base deployment authorization is online',offText:'Base deployment authorization is blocked',enabled:Boolean(s.base_deployment_enabled)},
+  {field:'update_deployment_enabled',label:'Update deployment authorization',help:'Allows manifest-driven Update deployment authorization after technical approval and customer publication.',onText:'Update deployment authorization is online',offText:'Update deployment authorization is blocked',enabled:Boolean(s.update_deployment_enabled)},
+  {field:'rollback_enabled',label:'Rollback authorization',help:'Allows customer rollback/checkpoint authorization where the customer deployer supports it.',onText:'Rollback authorization is online',offText:'Rollback authorization is blocked',enabled:Boolean(s.rollback_enabled)}
  ];
 
- const liveCount=rows.filter(r=>r.enabled&&!r.dangerWhen).length;
+ const serviceRows=rows.filter(r=>!r.dangerWhen);
+ const liveCount=serviceRows.filter(r=>r.enabled).length;
  const maintenance=Boolean(s.maintenance_mode);
 
  return <div className="shell"><SideNav active="settings"/><main className="main">
   <PageHeader eyebrow="System / Runtime control" title="API Control Center" description="Control License Manager authority services and runtime enforcement. Integration credentials are managed separately under API Access." badge={Boolean(s.system_enabled)&&!maintenance?'LIVE':maintenance?'MAINTENANCE':'OFFLINE'}/>
 
   <div className="grid dashboard-metrics api-metrics">
-   <div className="card metric-card"><div className="metric-icon icon-green">⚡</div><div><span className="metric-label">Authority services</span><strong className="metric">{liveCount}/4</strong><small>{Boolean(s.system_enabled)?'Master authority enabled':'Master authority offline'}</small></div></div>
+   <div className="card metric-card"><div className="metric-icon icon-green">⚡</div><div><span className="metric-label">Authority services</span><strong className="metric">{liveCount}/{serviceRows.length}</strong><small>{Boolean(s.system_enabled)?'Master authority enabled':'Master authority offline'}</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-red">◷</div><div><span className="metric-label">Runtime mode</span><strong className="metric api-mode-metric">{maintenance?'Maintenance':Boolean(s.licensing_enabled)?'Online':'Blocked'}</strong><small>License validation enforcement</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-blue">⌁</div><div><span className="metric-label">Validation TTL</span><strong className="metric">{Number(s.validation_ttl_seconds||60)}s</strong><small>Pulse poll {Number(s.pulse_poll_seconds||15)}s</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-indigo">#</div><div><span className="metric-label">Pulse revision</span><strong className="metric">{Number(s.pulse_revision||0)}</strong><small>{s.pulse_at?new Date(s.pulse_at).toLocaleString():'No pulse recorded'}</small></div></div>
   </div>
 
   <section className="section">
-   <div className="section-head"><div><div className="eyebrow">Runtime authority</div><h2>API controls</h2><p className="muted">These switches directly control the five authority states. Changes are audited and pulse connected runtimes when required.</p></div></div>
+   <div className="section-head"><div><div className="eyebrow">Runtime authority</div><h2>API controls</h2><p className="muted">These switches directly control licensing, release and deployment authority, including Base, Update and rollback authorization. Changes are audited and pulse connected runtimes when required.</p></div></div>
    <AuthorityControlGrid rows={rows} canManage={canManage} action={updateSettings}/>
   </section>
 
