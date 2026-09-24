@@ -13,7 +13,8 @@
     "database/migrations/20260920_release_channel_access_mode.sql": "1b4ce9634115f97e96174433af757b1334271058",
     "database/migrations/20260924_authority_schema_rebuild.sql": "1a4303307af3161bf0fd726334a3d73f74f14214",
     "database/migrations/20260924_release_channel_access.sql": "5dcd5dea6beec91f883d7e38016e20b0303d830e",
-    "database/migrations/20260924_runtime_policy_and_pulse.sql": "3af165b56e3409445c3f43867ad1bd6f6a4c0956"
+    "database/migrations/20260924_runtime_policy_and_pulse.sql": "3af165b56e3409445c3f43867ad1bd6f6a4c0956",
+    "database/migrations/20260925_fix_release_channel_trigger_search_path.sql": "06fa91818f227019cff5f53938cf71891d737557"
   },
   "remote_migrations": [
     {
