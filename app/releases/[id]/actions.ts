@@ -5,7 +5,6 @@ import { requireUser } from '../../../lib/session';
 import { db } from '../../../lib/db';
 import {
   archiveRelease,
-  deleteRelease,
   promoteRelease,
   publishRelease,
   rollbackBaseRelease,
@@ -170,7 +169,7 @@ export async function runReleaseAction(
       const row = await withdrawRelease(id, user.id, user.email);
       if (!row) return { ok: false, message: 'Release not found.' };
       refreshRelease(id);
-      return { ok: true, message: 'Published release withdrawn. It is no longer active and can now be archived and permanently deleted.' };
+      return { ok: true, message: 'Published release withdrawn. It is no longer active and can now be archived while its history is retained.' };
     }
 
     if (action === 'rollback') {
@@ -195,13 +194,6 @@ export async function runReleaseAction(
       if (!row) return { ok: false, message: 'Release not found.' };
       refreshRelease(id);
       return { ok: true, message: 'Release archived.' };
-    }
-
-    if (action === 'delete') {
-      const row = await deleteRelease(id, user.id, user.email);
-      if (!row) return { ok: false, message: 'Release not found.' };
-      revalidatePath('/releases');
-      return { ok: true, message: 'Release permanently deleted.' };
     }
 
     return { ok: false, message: 'Unsupported release action.' };
