@@ -1,15 +1,10 @@
 import Link from 'next/link';
-import {revalidatePath} from 'next/cache';
-import {requireUser} from '../../lib/session';
-import {listReleases,setReleaseReview,validateRelease} from '../../lib/core/releases';
+import {listReleases} from '../../lib/core/releases';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import TableTools from '../components/TableTools';
 import ReleaseQueueActions from '../components/ReleaseQueueActions';
 export const dynamic='force-dynamic';
-const roles=['owner','admin','operator'];
-async function validate(formData:FormData){'use server';const u=await requireUser();if(!roles.includes(u.role))return;const id=String(formData.get('id')||'');if(id){await validateRelease(id,u.id,u.email);revalidatePath('/releases');}}
-async function review(formData:FormData){'use server';const u=await requireUser();if(!roles.includes(u.role))return;const id=String(formData.get('id')||'');const decision=String(formData.get('decision')||'');if(id&&(decision==='approved'||decision==='rejected')){await setReleaseReview(id,decision,u.id,u.email,String(formData.get('reason')||'').trim()||undefined);revalidatePath('/releases');}}
 function validation(r:any){const v=r.manifest?.validation||{};return {status:v.status||'not run',checks:Array.isArray(v.checks)?v.checks:[]};}
 export default async function Releases(){
  const releases=(await listReleases(true)).filter((r:any)=>r.release_type==='update');
