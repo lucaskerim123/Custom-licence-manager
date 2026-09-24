@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../../lib/auth';
 import {db} from '../../../../../lib/db';
-import {archiveRelease,deleteRelease,publishRelease,promoteRelease,createPresentationRevision,updateReleasePresentation,withdrawRelease} from '../../../../../lib/core/releases';
+import {archiveRelease,deleteRelease,publishRelease,promoteRelease,createPresentationRevision,updateReleasePresentation,withdrawRelease,setReleaseReview,rollbackBaseRelease} from '../../../../../lib/core/releases';
 
 export async function GET(request:Request,{params}:{params:Promise<{id:string}>}){
   const auth=await integrationAuthorized(request,'releases.read');
@@ -28,7 +28,13 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
   const current=(await db().query('select release_type from releases where id=$1 limit 1',[id])).rows[0];
   if(!current)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
   if(action==='approve'||action==='reject'||action==='rollback'){
-    return NextResponse.json({error:'TECHNICAL_RELEASE_CONTROL_REQUIRES_LICENSE_MANAGER_ADMIN',code:'TECHNICAL_RELEASE_CONTROL_REQUIRES_LICENSE_MANAGER_ADMIN'},{status:403});
+    const control=await integrationAuthorized(request,'releases.control');
+    if(!control)return NextResponse.json({error:'TECHNICAL_RELEASE_CONTROL_REQUIRES_CONTROL_SCOPE',code:'TECHNICAL_RELEASE_CONTROL_REQUIRES_CONTROL_SCOPE'},{status:403});
+    try{
+      if(action==='approve')return NextResponse.json({release:await setReleaseReview(id,'approved',undefined,`api:${control.name}`,body.reason?String(body.reason):undefined)});
+      if(action==='reject')return NextResponse.json({release:await setReleaseReview(id,'rejected',undefined,`api:${control.name}`,body.reason?String(body.reason):undefined)});
+      return NextResponse.json({release:await rollbackBaseRelease(id,undefined,`api:${control.name}`)});
+    }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Technical release control failed',code:'TECHNICAL_RELEASE_CONTROL_FAILED'},{status:400});}
   }
   if(current.release_type!=='update'){
     return NextResponse.json({error:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER',code:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER'},{status:403});
