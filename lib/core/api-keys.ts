@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from '../db';
 
-export type ApiScope = 'license.issue' | 'license.validate' | 'license.manage' | 'releases.read' | 'releases.write' | 'deployment.read' | 'deployment.write';
+export type ApiScope = 'license.issue' | 'license.validate' | 'license.manage' | 'releases.read' | 'releases.write' | 'releases.control' | 'deployment.read' | 'deployment.write';
 
 function hashKey(value: string) {
   return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
@@ -25,6 +25,7 @@ function scopeAllows(granted: ApiScope[], required: ApiScope) {
   // incorrectly defaulted to license.validate. Those keys must be able to
   // provision a paid order, but do not receive license.manage privileges.
   if (granted.includes('license.validate') && required === 'license.issue') return true;
+  if (granted.includes('releases.control') && ['releases.write', 'releases.read'].includes(required)) return true;
   if (granted.includes('releases.write') && required === 'releases.read') return true;
   if (granted.includes('deployment.write') && required === 'deployment.read') return true;
   return false;
@@ -73,9 +74,10 @@ export async function authenticateApiKey(request: Request, requiredScope?: ApiSc
   // Keep explicitly configured machine tokens compatible with the same API
   // contract. This is a fallback only; UI-created API keys remain authoritative.
   if (envMachineKey(key)) {
-    const scopes: ApiScope[] = ['license.issue', 'license.validate', 'license.manage', 'releases.read', 'releases.write', 'deployment.read', 'deployment.write'];
+    const controlToken = [process.env.MASTER_API_TOKEN, process.env.INTEGRATION_API_TOKEN].filter(Boolean).some(candidate => candidate?.trim() === key);
+    const scopes: ApiScope[] = ['license.issue', 'license.validate', 'license.manage', 'releases.read', 'releases.write', ...(controlToken ? ['releases.control' as ApiScope] : []), 'deployment.read', 'deployment.write'];
     if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
-    return { name: 'environment-machine-token', scopes };
+    return { name: controlToken ? 'control-machine-token' : 'environment-machine-token', scopes };
   }
 
   return null;
