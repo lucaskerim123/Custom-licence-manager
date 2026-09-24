@@ -71,7 +71,8 @@ async function scanPackage(row:any,bytes:Buffer){
         migrationIds.add(id);
         const sql=Buffer.from(migration.data,'base64');
         const sha=createHash('sha256').update(sql).digest('hex');
-        if(sql.length!==Number(migration.size)||sha!==String(migration.sha256||'').toLowerCase()||/\b(?:begin|commit|rollback)\s*;/i.test(sql.toString('utf8')))migrationsValid=false;
+        const sqlText=sql.toString('utf8');
+        if(sql.length!==Number(migration.size)||sha!==String(migration.sha256||'').toLowerCase()||/\b(?:begin|commit|rollback)\s*;/i.test(sqlText)||/\b(?:drop\s+table|drop\s+schema|truncate\s+(?:table\s+)?|alter\s+table[\s\S]{0,300}?drop\s+column)\b/i.test(sqlText))migrationsValid=false;
       }
       const schemaChanged=pkg?.releaseAnalysis?.flags?.schemaChanged===true;
       if(schemaChanged&&!migrations.length)migrationsValid=false;
