@@ -65,7 +65,7 @@ export default async function Settings({searchParams}:{searchParams?:Promise<{cr
   {field:'deployment_enabled',label:'Deployment authorization',help:'Controls License Manager deployment authorization and coordination. Customer deployers still perform execution.',onText:'Deployment authorization is online',offText:'Deployment authorization is blocked',enabled:Boolean(s.deployment_enabled)}
  ];
 
- const liveCount=rows.filter(r=>r.enabled).length;
+ const authorityServices=rows.filter(r=>r.field!=='maintenance_mode');const liveCount=authorityServices.filter(r=>r.enabled).length;
  const activeKeys=keys.filter((k:any)=>k.status==='active').length;
 
  return <div className="shell"><SideNav active="settings"/><main className="main">
