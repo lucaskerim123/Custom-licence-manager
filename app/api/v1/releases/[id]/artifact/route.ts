@@ -16,23 +16,39 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   const auth=await integrationAuthorized(request,'releases.read');
   if(!auth)return NextResponse.json({error:'UNAUTHORIZED',code:'UNAUTHORIZED'},{status:401});
   const {id}=await params;
-  const row=(await db().query("select artifact_url,artifact_name from releases where id=$1 limit 1",[id])).rows[0];
+  const row=(await db().query("select artifact_url,artifact_name,artifact_repo,source_repo,manifest from releases where id=$1 limit 1",[id])).rows[0];
   if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
-  if(!row.artifact_url)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
 
-  const github=githubAssetUrl(String(row.artifact_url));
+  const token=String(process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+  let assetUrl=String(row.artifact_url||'').trim();
+  if(!assetUrl){
+    const repo=String(row.artifact_repo||row.source_repo||'').trim();
+    const tag=String(row.manifest?.artifactTag||'').trim();
+    const name=String(row.artifact_name||'').trim();
+    if(!repo||!tag||!name)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
+    const headers:Record<string,string>={accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'OrbitFS-License-Master'};
+    if(token)headers.authorization='Bearer '+token;
+    const releaseResponse=await fetch('https://api.github.com/repos/'+repo+'/releases/tags/'+encodeURIComponent(tag),{headers,cache:'no-store'});
+    if(!releaseResponse.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
+    const release:any=await releaseResponse.json();
+    const asset=Array.isArray(release.assets)?release.assets.find((item:any)=>String(item.name||'')===name):null;
+    if(!asset?.url)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
+    assetUrl=String(asset.url);
+  }
+
+  const github=githubAssetUrl(assetUrl);
   const response=github
     ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{
         headers:{
           accept:'application/octet-stream',
-          authorization:'Bearer '+String(process.env.GITHUB_RELEASE_TOKEN||'').trim(),
+          authorization:token?'Bearer '+token:'',
           'x-github-api-version':'2026-03-10',
           'user-agent':'OrbitFS-License-Master'
         },
         cache:'no-store',
         redirect:'follow'
       })
-    : await fetch(String(row.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+    : await fetch(assetUrl,{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
 
   if(!response.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
   return new Response(await response.arrayBuffer(),{
