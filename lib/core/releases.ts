@@ -75,7 +75,7 @@ async function scanPackage(row:any,bytes:Buffer){
       }
       const schemaChanged=pkg?.releaseAnalysis?.flags?.schemaChanged===true;
       if(schemaChanged&&!migrations.length)migrationsValid=false;
-      const engineDatabaseOk=!engine?migrations.length===0:JSON.stringify(engine.database||null)===JSON.stringify(database);
+      const engineDatabaseOk=!engine||JSON.stringify(engine.database||null)===JSON.stringify(database);
       const databaseOk=migrationsValid&&engineDatabaseOk;
       checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions?'valid.':'invalid.')});
       checks.push({key:'package_update_schema',ok:databaseOk,message:databaseOk?(migrations.length?`Customer database migration contract contains ${migrations.length} verified immutable migration(s).`:'Update release has a valid empty customer database migration contract.'):'Update database/schema changes require a valid checksummed orbitfs-db-migrations-v1 contract that matches the Engine payload.'});
