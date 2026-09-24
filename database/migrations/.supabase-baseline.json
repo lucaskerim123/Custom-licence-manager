@@ -14,6 +14,7 @@
     "database/migrations/20260924_authority_schema_rebuild.sql": "1a4303307af3161bf0fd726334a3d73f74f14214",
     "database/migrations/20260924_release_channel_access.sql": "5dcd5dea6beec91f883d7e38016e20b0303d830e",
     "database/migrations/20260924_runtime_policy_and_pulse.sql": "3af165b56e3409445c3f43867ad1bd6f6a4c0956",
+    "database/migrations/20260925_deployment_capability_authority.sql": "b1d366bc55c8c6e1519ad33d81a2b1c047cf1008",
     "database/migrations/20260925_fix_release_channel_trigger_search_path.sql": "06fa91818f227019cff5f53938cf71891d737557"
   },
   "remote_migrations": [
@@ -88,6 +89,10 @@
     {
       "version": "20260922135052",
       "name": "index_license_manager_foreign_keys"
+    },
+    {
+      "version": "20260924190017",
+      "name": "deployment_capability_authority_20260925"
     }
   ]
 }
