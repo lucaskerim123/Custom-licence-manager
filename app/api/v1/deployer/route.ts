@@ -33,6 +33,10 @@ export async function POST(request:Request){
   const release=(await db().query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0];
   if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
   if(release.status!=='published'||release.review_status!=='approved'||release.archived_at)return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
+  const expectedReleaseType=action==='update'?'update':'base';
+  if(String(release.release_type)!==expectedReleaseType)return NextResponse.json({ok:false,code:'RELEASE_TYPE_ACTION_MISMATCH'},{status:409});
+  const requestedChannel=String(body?.channel||body?.releaseChannel||body?.release_channel||'').trim().toLowerCase();
+  if(requestedChannel&&requestedChannel!==String(release.channel||'').trim().toLowerCase())return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_ACTION_MISMATCH'},{status:409});
   if(!release.checksum)return NextResponse.json({ok:false,code:'RELEASE_ARTIFACT_NOT_VERIFIED'},{status:409});
   const licenseId=String(body?.licenseId||body?.license_id||'').trim();
   if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED'},{status:403});
