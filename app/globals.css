@@ -185,3 +185,10 @@ button{letter-spacing:inherit}
 .authority-workspace{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(290px,.55fr);gap:12px}.authority-workspace-main{display:grid;gap:10px}.authority-workspace-main>.form-card,.authority-workspace-main>.card{margin:0}
 .authority-rail{align-self:start}.authority-rail h2{margin:0 0 10px}.installation-filter{margin-top:12px;margin-bottom:0}
 @media(max-width:1180px){.authority-workspace{grid-template-columns:1fr}}
+
+
+/* API access + contract */
+.scope-pill-list{display:flex;flex-wrap:wrap;gap:4px}
+.api-contract-hero{display:flex;justify-content:space-between;gap:20px;align-items:center}.api-contract-hero h2{margin:0 0 5px;font-size:16px}.api-contract-hero p{margin:0;max-width:850px;color:var(--muted);font-size:10px;line-height:1.55}.api-contract-status{display:grid;grid-template-columns:auto 1fr;gap:2px 7px;align-items:center;min-width:160px;padding:11px;border:1px solid #cfeee0;border-radius:10px;background:#f5fcf8}.api-contract-status strong{font-size:10px}.api-contract-status small{grid-column:2;font-size:8px;color:var(--muted)}
+.api-contract-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.api-contract-card{display:grid;gap:12px}.api-contract-card-head{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:flex-start}.api-contract-card-head>span{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:#eef0ff;color:#5658d3;font-size:9px;font-weight:850}.api-contract-card-head h2{margin:0 0 3px;font-size:12px}.api-contract-card-head p{margin:0;font-size:8px;line-height:1.45}.api-contract-card .code-panel{margin:0;min-height:120px}
+@media(max-width:980px){.api-contract-grid{grid-template-columns:1fr}}@media(max-width:760px){.api-contract-hero{align-items:flex-start;flex-direction:column}.api-contract-status{width:100%}}
