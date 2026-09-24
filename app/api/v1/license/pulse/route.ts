@@ -20,6 +20,9 @@ function publicState(s:any){
       maintenance_mode:Boolean(s?.maintenance_mode),
       release_system_enabled:Boolean(s?.release_system_enabled),
       deployment_enabled:Boolean(s?.deployment_enabled),
+      base_deployment_enabled:s?.base_deployment_enabled!==false,
+      update_deployment_enabled:s?.update_deployment_enabled!==false,
+      rollback_enabled:s?.rollback_enabled!==false,
     },
   };
 }
