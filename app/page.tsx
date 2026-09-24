@@ -16,7 +16,7 @@ async function stats(){
   p.query("select count(*)::int count from releases where coalesce((manifest->'validation'->>'status'),'not_run')='failed' and archived_at is null"),
   p.query("select count(*)::int count from activations where status='active'"),
   p.query("select system_enabled,licensing_enabled,release_system_enabled,deployment_enabled,maintenance_mode,pulse_revision,pulse_at from system_settings where id=true"),
-  p.query("select date_trunc('day',created_at)::date day,count(*)::int count from audit_events where created_at >= now()-interval '6 days' group by 1 order by 1"),
+  p.query("select date_trunc('day',created_at)::date as activity_day,count(*)::int as count from audit_events where created_at >= now()-interval '6 days' group by 1 order by 1"),
   p.query("select action,actor,resource_type,created_at from audit_events order by created_at desc limit 7")
  ]);
  return {
@@ -36,7 +36,7 @@ export default async function Home(){
   ['Deployment authorization',Boolean(s.settings?.deployment_enabled),'Customer deployer authorization'],
   ['Maintenance',Boolean(s.settings?.maintenance_mode),'Controlled validation maintenance']
  ] as const;
- const dayMap=new Map(s.activity.map((x:any)=>[String(x.day).slice(0,10),Number(x.count)]));
+ const dayMap=new Map(s.activity.map((x:any)=>[String(x.activity_day).slice(0,10),Number(x.count)]));
  const days=Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const key=d.toISOString().slice(0,10);return {key,label:d.toLocaleDateString(undefined,{weekday:'short'}),count:dayMap.get(key)||0};});
  const max=Math.max(1,...days.map(x=>x.count));
 
