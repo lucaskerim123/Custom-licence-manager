@@ -83,7 +83,7 @@ export default async function BaseDeployment() {
           <div><div className="eyebrow">Authoritative queue</div><h2>Base candidates</h2><p className="muted">The release worker submits the package and release metadata. Nothing becomes publishable here until all technical checks pass and an operator approves it.</p></div>
           <div className="queue-header-actions"><span className="badge">{releases.length} total</span><Link className="button secondary" href="/releases">View updates</Link></div>
         </div>
-        <TableTools targetId="base-release-list" filters={['pending','approved','rejected','published']} />
+        <TableTools targetId="base-release-list" filters={['pending','approved','rejected','published']} pageSize={3} />
 
         <div id="base-release-list" className="release-list">
           {releases.length === 0 ? <div className="empty-state"><strong>No Base candidates yet</strong><span>When the first V1 Base workflow completes its License Manager handoff, the candidate will appear here.</span></div> :
