@@ -19,7 +19,7 @@ export default function TableTools({targetId,filters=[],pageSize=0}:{targetId:st
    const text=(row.dataset.search||row.textContent||'').toLowerCase();
    const value=(row.dataset.filter||'').toLowerCase();
    const okSearch=!query.trim()||text.includes(query.trim().toLowerCase());
-   const okFilter=filter==='all'||value===filter.toLowerCase();
+   const okFilter=filter==='all'||value.split(/\\s+/).includes(filter.toLowerCase());
    return okSearch&&okFilter;
   });
   const pageCount=pageSize>0?Math.max(1,Math.ceil(matches.length/pageSize)):1;
