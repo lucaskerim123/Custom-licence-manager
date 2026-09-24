@@ -17,6 +17,7 @@ export async function GET(request:Request){
     const product=String(url.searchParams.get('product')||'orbitfs_base').trim().toLowerCase();
     const channel=String(url.searchParams.get('channel')||'stable').trim().toLowerCase();
     const type=String(url.searchParams.get('type')||'update').trim().toLowerCase();
+    const engineOnly=url.searchParams.get('engine')==='1';
     if(!['base','update'].includes(type))return NextResponse.json({ok:false,code:'INVALID_RELEASE_TYPE'},{status:400});
 
     const licenseKey=request.headers.get('x-license-key')?.trim()||'';
@@ -25,9 +26,15 @@ export async function GET(request:Request){
     const validation=await validateLicense({key:licenseKey,productSlug:product,installationId:installationId||undefined,requestIp:requestIp(request),userAgent:request.headers.get('user-agent'),telemetry:telemetry({telemetry:{client:request.headers.get('x-orbitfs-client')||'orbitfs-updater'}})});
     if(!validation.valid)return NextResponse.json({ok:false,code:validation.code},{status:validation.status});
 
-    const release=releaseId
-      ? (await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0]
-      : (await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where p.slug=$1 and r.channel=$2 and r.release_type=$3 and r.status='published' and r.review_status='approved' and r.archived_at is null order by r.published_at desc nulls last,r.created_at desc limit 1`,[product,channel,type])).rows[0];
+    let release:any=null;
+    if(releaseId){
+      release=(await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0];
+    }else{
+      const candidates=(await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where p.slug=$1 and r.channel=$2 and r.release_type=$3 and r.status='published' and r.review_status='approved' and r.archived_at is null order by r.published_at desc nulls last,r.created_at desc limit 25`,[product,channel,type])).rows;
+      release=engineOnly
+        ? candidates.find((row:any)=>{const components=Array.isArray(row?.manifest?.components)?row.manifest.components.map((x:any)=>String(x||'').toLowerCase()):[];return components.some((x:string)=>['apex','mcp','studio'].includes(x));})
+        : candidates[0];
+    }
 
     if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
     if(String(release.product)!==product)return NextResponse.json({ok:false,code:'RELEASE_PRODUCT_MISMATCH'},{status:409});
