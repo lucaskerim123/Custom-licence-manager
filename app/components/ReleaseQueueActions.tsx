@@ -84,7 +84,6 @@ export default function ReleaseQueueActions({
       )}
 
       {!archived && <form action={action}><input type="hidden" name="id" value={id} /><input type="hidden" name="action" value="archive" /><button className="button secondary" disabled={pending}>Archive</button></form>}
-      {archived && <form action={action} onSubmit={(e) => { if (!confirm('Permanently delete this archived release? This cannot be undone.')) e.preventDefault(); }}><input type="hidden" name="id" value={id} /><input type="hidden" name="action" value="delete" /><button className="button danger" disabled={pending}>Delete permanently</button></form>}
 
       {state.message && (
         <div className={state.ok ? 'notice okBox' : 'notice dangerBox'} aria-live="polite">
