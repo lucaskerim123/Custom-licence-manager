@@ -32,8 +32,8 @@ export default function SideNav({active}:{active?:string}){
     </div>)}
    </nav>
    <div className="side-footer">
-    <div className="side-status"><span className="status-light online"/> <strong>Authority connected</strong><small>Admin plane remains independently available.</small></div>
-    <form action="/api/auth/logout" method="post"><button className="nav-button" type="submit"><span className="nav-icon">⇥</span>Sign out</button></form>
+    <div className="side-status"><strong>License Manager</strong><small>Technical authority for licensing, releases and deployment authorization.</small></div>
+      <form action="/api/auth/logout" method="post"><button className="nav-button" type="submit"><span className="nav-icon">⇥</span>Sign out</button></form>
    </div>
   </aside>
  </>;
