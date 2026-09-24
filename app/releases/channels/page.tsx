@@ -1,4 +1,5 @@
 import {requireUser} from '../../../lib/session';
+import {db} from '../../../lib/db';
 import {listReleaseChannels,saveReleaseChannel} from '../../../lib/core/release-channels';
 import SideNav from '../../components/SideNav';
 import PageHeader from '../../components/PageHeader';
@@ -51,7 +52,11 @@ function AccessPolicyField({value='assigned'}:{value?:string}){
 
 export default async function ReleaseChannels(){
  const user=await requireUser();
- const channels=await listReleaseChannels(true);
+ const [channels,accessRows]=await Promise.all([
+  listReleaseChannels(true),
+  db().query(`select channel,count(*)::int assignments from release_channel_access group by channel order by channel`)
+ ]);
+ const accessCounts=new Map(accessRows.rows.map((row:any)=>[row.channel,Number(row.assignments||0)]));
  return <div className="shell">
   <SideNav active="channels"/>
   <main className="main">
@@ -66,12 +71,18 @@ export default async function ReleaseChannels(){
         <span className={c.enabled?'badge ok':'badge off'}>{c.enabled?'Enabled':'Disabled'}</span>
         <span className="badge">{policyLabel(c)}</span>
         <span className="badge">{c.customer_visible?'Customer visible':'Internal'}</span>
+        <span className="badge">{c.channel==='stable'?'All active licenses':`${accessCounts.get(c.channel)||0} assigned`}</span>
        </div>
       </div>
       <span className="collapse-chevron">⌄</span>
      </summary>
      <div className="channel-body">
       <p className="muted channel-description">{c.description||'No description.'}</p>
+      <div className="channel-access-summary">
+       <div><span>Technical access</span><strong>{policyLabel(c)}</strong></div>
+       <div><span>Assignments</span><strong>{c.channel==='stable'?'Implicit for active licenses':accessCounts.get(c.channel)||0}</strong></div>
+       <div><span>Customer surface</span><strong>{c.customer_visible?'Visible':'Internal only'}</strong></div>
+      </div>
       {roles.includes(user.role)?<form className="form channel-edit-form" action={save}>
        <input type="hidden" name="channel" value={c.channel}/>
        <div className="channel-form-grid">
