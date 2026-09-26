@@ -1,7 +1,7 @@
 'use client';
 import {useActionState,useEffect,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {issueLicenseAction,rotateLicenseAction} from './actions';
+import {licenseFormAction,rotateLicenseAction} from './actions';
 
 const initial={ok:false,key:'',error:''};
 
@@ -44,26 +44,43 @@ export function RotateLicenseButton({licenseId}:{licenseId:string}){
 }
 
 export default function LicenseForm({products}:{products:{id:string,name:string}[]}){
- const[state,action,pending]=useActionState(issueLicenseAction,initial);
+ const[state,action,pending]=useActionState(licenseFormAction,initial);
  const[dismissed,setDismissed]=useState(false);
+ const[editing,setEditing]=useState<any>(null);
  useEffect(()=>{if(state.key)setDismissed(false)},[state.key]);
- return <section className="card form-card critical-form">
-  <div className="section-head"><div><h2>Issue license</h2><p className="muted">Create a license directly in the authority. The plaintext key is returned once.</p></div><span className="badge">MASTER</span></div>
-  <form className="form form-grid-2" action={action}>
-   <label>Product<select className="input" name="product_id" required><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-   <label>Customer external ID<input className="input" name="customer" placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
-   <label>External reference<input className="input" name="reference" placeholder="Order / subscription reference"/></label>
-   <label>Expiry<input className="input" name="expires" type="datetime-local"/></label>
-   <label>Max installations<input className="input" name="max_installations" type="number" min="1" max="100" defaultValue="1"/></label>
+ useEffect(()=>{
+  const handler=(event:Event)=>{
+   const detail=(event as CustomEvent).detail;
+   if(!detail)return;
+   setEditing(detail);
+   requestAnimationFrame(()=>document.getElementById('license-authority-form')?.scrollIntoView({behavior:'smooth',block:'start'}));
+  };
+  window.addEventListener('orbitfs-license-edit',handler as EventListener);
+  return ()=>window.removeEventListener('orbitfs-license-edit',handler as EventListener);
+ },[]);
+ const policy=editing?.metadata?.license_policy||{};
+ const components=policy?.components||{};
+ const expires=editing?.expires_at?new Date(editing.expires_at).toISOString().slice(0,16):'';
+ const resetEdit=()=>setEditing(null);
+ return <section id="license-authority-form" className="card form-card critical-form">
+  <div className="section-head"><div><h2>{editing?'Edit license':'Issue license'}</h2><p className="muted">{editing?'Update this authority record and its component entitlements.':'Create a license directly in the authority. The plaintext key is returned once.'}</p></div><span className="badge">MASTER</span></div>
+  <form key={editing?.id||'issue'} className="form form-grid-2" action={action}>
+   {editing&&<input type="hidden" name="id" value={editing.id}/>} 
+   <label>Product<select className="input" name="product_id" required={!editing} defaultValue={editing?.product_id||''} disabled={Boolean(editing)}><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+   <label>Customer external ID<input className="input" name="customer" defaultValue={editing?.customer_external_id||''} placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
+   <label>External reference<input className="input" name="reference" defaultValue={editing?.external_reference||''} placeholder="Order / subscription reference"/></label>
+   <label>Expiry<input className="input" name="expires" type="datetime-local" defaultValue={expires}/></label>
+   <label>Max installations<input className="input" name="max_installations" type="number" min="1" max="100" defaultValue={Number(policy.max_installations||1)}/></label>
    <fieldset className="component-editor"><legend>Component entitlements</legend>
     <label><input type="checkbox" checked readOnly/> OrbitFS Base</label>
-    <label><input type="checkbox" name="orbitfs_apex"/> OrbitFS APEX</label>
-    <label><input type="checkbox" name="orbitfs_mcp"/> OrbitFS MCP</label>
-    <label><input type="checkbox" name="orbitfs_studio"/> OrbitFS Studio</label>
+    <label><input type="checkbox" name="orbitfs_apex" defaultChecked={Boolean(components.orbitfs_apex)}/> OrbitFS APEX</label>
+    <label><input type="checkbox" name="orbitfs_mcp" defaultChecked={Boolean(components.orbitfs_mcp)}/> OrbitFS MCP</label>
+    <label><input type="checkbox" name="orbitfs_studio" defaultChecked={Boolean(components.orbitfs_studio)}/> OrbitFS Studio</label>
    </fieldset>
-   <div className="form-actions"><button className="button" disabled={pending}>{pending?'Issuing…':'Issue license'}</button></div>
+   <div className="form-actions"><button className="button" disabled={pending}>{pending?(editing?'Saving…':'Issuing…'):(editing?'Save license':'Issue license')}</button>{editing&&<button type="button" className="button secondary" onClick={resetEdit}>Cancel edit</button>}</div>
   </form>
   {state.error&&<div className="notice dangerBox" style={{marginTop:12}}>{state.error}</div>}
   {state.ok&&state.key&&!dismissed&&<KeyReveal title="License issued" keyValue={state.key} detail="The license was created successfully. Copy the key now before closing this dialog." onClose={()=>setDismissed(true)}/>}
+  {state.ok&&!state.key&&editing&&<div className="notice" style={{marginTop:12}}>License updated.</div>}
  </section>;
 }
