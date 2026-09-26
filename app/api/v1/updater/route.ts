@@ -59,7 +59,7 @@ export async function GET(request:Request){
     if(!release.artifact_url)return NextResponse.json({ok:false,code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
     const github=githubAssetUrl(String(release.artifact_url));
     const response=github
-      ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{headers:{accept:'application/octet-stream',authorization:'Bearer '+String(process.env.GITHUB_RELEASE_TOKEN||'').trim(),'x-github-api-version':'2026-03-10','user-agent':'OrbitFS-License-Master'},cache:'no-store',redirect:'follow'})
+      ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{headers:{accept:'application/octet-stream',authorization:'Bearer '+String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim(),'x-github-api-version':'2026-03-10','user-agent':'OrbitFS-License-Master'},cache:'no-store',redirect:'follow'})
       : await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
     if(!response.ok)return NextResponse.json({ok:false,code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
     return new Response(await response.arrayBuffer(),{status:200,headers:{'content-type':response.headers.get('content-type')||'application/octet-stream','content-disposition':response.headers.get('content-disposition')||`attachment; filename="${release.artifact_name||'orbitfs-release'}"`,'cache-control':'private, no-store'}});
