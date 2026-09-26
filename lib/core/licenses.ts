@@ -94,7 +94,7 @@ export async function deleteLicense(id:string,actorUserId?:string|null,actor?:st
 
 export async function setLicenseStatus(id:string,status:LicenseStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update licenses set status=$1 where id=$2 returning id,status`,[status,id]);if(!result.rowCount)throw new Error('License not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.status','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);const pulse=await sendPulse(actorUserId??null,actor??'system',`license-${status}`,{license_id:id,status});return {...result.rows[0],pulse};}
 
-export async function setInstallationStatus(id:string,status:InstallationStatus,actorUserId?:string|null,actor?:string){const result=await db().query(`update activations set status=$1 where id=$2 returning id,license_id,installation_id,status,last_seen_at`,[status,id]);if(!result.rowCount)throw new Error('Installation not found');await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'installation.status','activation',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);const row=result.rows[0];const pulse=await sendPulse(actorUserId??null,actor??'system',`installation-${status}`,{activation_id:id,license_id:row.license_id,installation_id:row.installation_id,status});return {...row,pulse};}
+export async function setInstallationStatus(id:string,status:InstallationStatus,actorUserId?:string|null,actor?:string){const pool=db();const current=(await pool.query('select id,license_id,installation_id,status from activations where id=$1 limit 1',[id])).rows[0];if(!current)throw new Error('Installation not found');if(status==='active'){const reserved=(await pool.query("select id from activations where license_id=$1 and id<>$2 and status in ('active','locked') limit 1",[current.license_id,id])).rows[0];if(reserved)throw new Error('This licence is already bound to another installation');}const result=await pool.query(`update activations set status=$1,last_seen_at=now() where id=$2 returning id,license_id,installation_id,status,last_seen_at`,[status,id]);await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'installation.status','activation',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({status})]);const row=result.rows[0];const pulse=await sendPulse(actorUserId??null,actor??'system',`installation-${status}`,{activation_id:id,license_id:row.license_id,installation_id:row.installation_id,status});return {...row,pulse};}
 
 export async function rotateLicense(id:string,actorUserId?:string|null,actor?:string){
   const pool=db();
@@ -162,9 +162,17 @@ export async function recordInstallationCheckIn(input:{
   if(license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())) throw Object.assign(new Error('License is not active'),{code:'LICENSE_NOT_ELIGIBLE',status:403});
   let activation=(await pool.query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[input.licenseId,input.installationId])).rows[0];
   if(!activation && input.action==='deploy'){
-    activation=(await pool.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11) returning id,status`,[
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(input.licenseId)]);
+      const reserved=(await client.query("select id from activations where license_id=$1 and status in ('active','locked') limit 1",[input.licenseId])).rows[0];
+      if(reserved)throw Object.assign(new Error('License is already bound to another installation'),{code:'INSTALLATION_LIMIT_REACHED',status:403});
+      activation=(await client.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11) returning id,status`,[
       input.licenseId,input.installationId,input.productVersion??null,JSON.stringify(input.details??{}),input.sourceIp??null,input.userAgent??null,input.client??null,input.clientVersion??null,input.provider??null,input.region??null,JSON.stringify((input.details&&typeof input.details==='object'&&input.details.components&&typeof input.details.components==='object')?input.details.components:{})
     ])).rows[0];
+      await client.query('COMMIT');
+    }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release()}
   }
   if(!activation) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
   if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
