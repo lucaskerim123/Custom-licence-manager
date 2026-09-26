@@ -161,23 +161,16 @@ export async function recordInstallationCheckIn(input:{
   if(!license) throw Object.assign(new Error('License not found'),{code:'LICENSE_NOT_FOUND',status:404});
   if(license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())) throw Object.assign(new Error('License is not active'),{code:'LICENSE_NOT_ELIGIBLE',status:403});
   let activation=(await pool.query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[input.licenseId,input.installationId])).rows[0];
-  if(!activation && input.action==='deploy'){
-    const client=await pool.connect();
-    try{
-      await client.query('BEGIN');
-      await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(input.licenseId)]);
-      const reserved=(await client.query("select id from activations where license_id=$1 and status in ('active','locked') limit 1",[input.licenseId])).rows[0];
-      if(reserved)throw Object.assign(new Error('License is already bound to another installation'),{code:'INSTALLATION_LIMIT_REACHED',status:403});
-      activation=(await client.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11) returning id,status`,[
-      input.licenseId,input.installationId,input.productVersion??null,JSON.stringify(input.details??{}),input.sourceIp??null,input.userAgent??null,input.client??null,input.clientVersion??null,input.provider??null,input.region??null,JSON.stringify((input.details&&typeof input.details==='object'&&input.details.components&&typeof input.details.components==='object')?input.details.components:{})
-    ])).rows[0];
-      await client.query('COMMIT');
-    }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release()}
-  }
-  if(!activation) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
-  if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
   const details=input.details&&typeof input.details==='object'?input.details:{};
   const components=(details.components&&typeof details.components==='object')?details.components:{};
+  if(!activation){
+    if(input.action!=='deploy') throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
+    await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,null,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)',[
+      input.licenseId,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify({...details,activationPending:true})
+    ]);
+    return {ok:true,activationId:null,installationId:input.installationId,activationPending:true};
+  }
+  if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
   await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)',[
     input.licenseId,activation.id,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify(details)
   ]);
