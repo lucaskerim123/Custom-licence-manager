@@ -15,7 +15,7 @@ export async function POST(
   const action = String(body?.action || '').trim().toLowerCase();
   const installationId = String(body?.installation_id || body?.installationId || '').trim();
 
-  if (!['rotate', 'unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-components', 'lock-installation', 'unlock-installation', 'terminate-installation'].includes(action)) {
+  if (!['rotate', 'unlock', 'customer-unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-components', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
     return NextResponse.json({ error: 'Unsupported license control action' }, { status: 400 });
   }
 
@@ -64,9 +64,13 @@ export async function POST(
       return NextResponse.json({ ok: true, action, license: updated, components });
     }
 
-    if (['unlock', 'lock-installation', 'unlock-installation', 'terminate-installation'].includes(action)) {
+    if (['unlock', 'customer-unlock', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
       if (!installationId) {
         return NextResponse.json({ error: 'installation_id is required for installation control' }, { status: 400 });
+      }
+      if (action === 'customer-unlock') {
+        const settings = (await db().query('select customer_self_unlock_enabled from system_settings where id=true')).rows[0];
+        if (!settings?.customer_self_unlock_enabled) return NextResponse.json({ error: 'Customer installation unlock is disabled by License Manager', code: 'CUSTOMER_INSTALLATION_UNLOCK_DISABLED' }, { status: 403 });
       }
 
       const activation = (
@@ -79,14 +83,14 @@ export async function POST(
       if (!activation) return NextResponse.json({ error: 'Installation not found for this license' }, { status: 404 });
 
       const status =
-        action === 'unlock' || action === 'unlock-installation'
+        action === 'reactivate-installation'
           ? 'active'
-          : action === 'terminate-installation'
-            ? 'terminated'
-            : 'locked';
+          : action === 'lock-installation'
+            ? 'locked'
+            : 'terminated';
 
       const result = await setInstallationStatus(activation.id, status, null, 'external-integration');
-      return NextResponse.json({ ok: true, action, installation: result });
+      return NextResponse.json({ ok: true, action, installation: result, message: status === 'terminated' ? 'Installation binding released. The licence can activate on one installation again.' : status === 'locked' ? 'Installation blocked and remains bound to this licence.' : 'Installation reactivated.' });
     }
 
     const status = action === 'activate' ? 'active' : action === 'suspend' ? 'suspended' : 'revoked';
