@@ -40,7 +40,7 @@ export async function POST(request:Request){
   if(installationId){
     const activation=(await db().query('select status from activations where license_id=$1 and installation_id=$2 limit 1',[licenseId,installationId])).rows[0];
     if(activation&&activation.status!=='active')return NextResponse.json({ok:false,code:'INSTALLATION_LOCKED_OR_TERMINATED'},{status:403});
-    if(!activation&&action!=='deploy')return NextResponse.json({ok:false,code:'INSTALLATION_NOT_REGISTERED'},{status:403});
+    if(!activation&&!['deploy','redeploy'].includes(action))return NextResponse.json({ok:false,code:'INSTALLATION_NOT_REGISTERED'},{status:403});
     // First Base deployment is allowed before runtime licence activation.
     // Billing Store proves entitlement and records the installation/release identity;
     // Base first setup remains authoritative for licence-key activation and the real installation lock.
