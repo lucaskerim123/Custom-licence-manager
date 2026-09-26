@@ -6,6 +6,7 @@ create table if not exists system_settings (
   system_enabled boolean not null default true,
   licensing_enabled boolean not null default true,
   maintenance_mode boolean not null default false,
+  customer_self_unlock_enabled boolean not null default true,
   release_system_enabled boolean not null default true,
   deployment_enabled boolean not null default true,
   validation_ttl_seconds integer not null default 60,
