@@ -19,7 +19,7 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   const row=(await db().query("select artifact_url,artifact_name,artifact_repo,source_repo,manifest from releases where id=$1 limit 1",[id])).rows[0];
   if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
 
-  const token=String(process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+  const token=String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
   let assetUrl=String(row.artifact_url||'').trim();
   if(!assetUrl){
     const repo=String(row.artifact_repo||row.source_repo||'').trim();
