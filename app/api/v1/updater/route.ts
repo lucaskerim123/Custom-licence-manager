@@ -66,9 +66,22 @@ export async function GET(request:Request){
 
     if(!release.artifact_url)return NextResponse.json({ok:false,code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
     const github=githubAssetUrl(String(release.artifact_url));
-    const response=github
-      ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{headers:{accept:'application/octet-stream',authorization:'Bearer '+String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim(),'x-github-api-version':'2026-03-10','user-agent':'OrbitFS-License-Master'},cache:'no-store',redirect:'follow'})
-      : await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
+    let response:Response;
+    if(github){
+      const token=String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+      const apiUrl='https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId;
+      const commonHeaders:Record<string,string>={'x-github-api-version':'2022-11-28','user-agent':'OrbitFS-License-Master'};
+      if(token)commonHeaders.authorization='Bearer '+token;
+      const metadata=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/vnd.github+json'},cache:'no-store'});
+      let browserUrl='';
+      if(metadata.ok){try{const value:any=await metadata.json();browserUrl=String(value?.browser_download_url||'').trim();}catch{}}
+      response=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+      if(!response.ok&&browserUrl){
+        response=await fetch(browserUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+      }
+    }else{
+      response=await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
+    }
     if(!response.ok)return NextResponse.json({ok:false,code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
     const bytes=Buffer.from(await response.arrayBuffer());
     const expected=String(release.checksum||'').trim().toLowerCase();
