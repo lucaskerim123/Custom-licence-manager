@@ -1,6 +1,6 @@
 import { db } from '../db';
 
-export type SettingField='system_enabled'|'licensing_enabled'|'maintenance_mode'|'release_system_enabled'|'deployment_enabled'|'base_deployment_enabled'|'update_deployment_enabled'|'rollback_enabled';
+export type SettingField='system_enabled'|'licensing_enabled'|'maintenance_mode'|'customer_self_unlock_enabled'|'release_system_enabled'|'deployment_enabled'|'base_deployment_enabled'|'update_deployment_enabled'|'rollback_enabled';
 export type RuntimePolicy={
   validation_ttl_seconds:number;
   offline_grace_seconds:number;
@@ -34,7 +34,7 @@ export async function sendPulse(actorUserId:string|null,actor:string,reason:stri
 }
 
 export async function setSetting(field:SettingField,value:boolean,actorUserId:string|null,actor:string) {
-  const allowed:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
+  const allowed:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
   if(!allowed.includes(field))throw new Error('Unsupported authority setting');
   const before=await getSettings();
   const result=await db().query(`update system_settings set ${field}=$1, updated_at=now() where id=true returning *`,[value]);
