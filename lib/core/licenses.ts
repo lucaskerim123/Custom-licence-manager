@@ -27,7 +27,10 @@ export async function issueLicense(input: { productId: string; customerExternalI
     if(existing)return {...existing,key:undefined,alreadyIssued:true};
   }
   const key=generateLicenseKey();const hash=hashKey(key);
-  const result=await pool.query(`insert into licenses(license_key_hash,license_key_last4,product_id,customer_external_id,customer_override,external_reference,expires_at,metadata) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,status,expires_at,customer_external_id,customer_override`,[hash,key.slice(-4),input.productId,input.customerExternalId??null,Boolean(input.customerOverride),input.externalReference??null,input.expiresAt??null,JSON.stringify(input.metadata??{})]);
+  const suppliedMetadata=input.metadata&&typeof input.metadata==='object'?input.metadata:{};
+  const suppliedPolicy=(suppliedMetadata as any).license_policy&&typeof (suppliedMetadata as any).license_policy==='object'?(suppliedMetadata as any).license_policy:{};
+  const metadata={...suppliedMetadata,license_policy:{...suppliedPolicy,max_installations:1}};
+  const result=await pool.query(`insert into licenses(license_key_hash,license_key_last4,product_id,customer_external_id,customer_override,external_reference,expires_at,metadata) values($1,$2,$3,$4,$5,$6,$7,$8) returning id,status,expires_at,customer_external_id,customer_override`,[hash,key.slice(-4),input.productId,input.customerExternalId??null,Boolean(input.customerOverride),input.externalReference??null,input.expiresAt??null,JSON.stringify(metadata)]);
   const license=result.rows[0];
   await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.issue','license',$3,$4)`,[input.actorUserId??null,input.actor??'system',license.id,JSON.stringify({last4:key.slice(-4),product_id:input.productId,customer_external_id:input.customerExternalId??null,customer_override:Boolean(input.customerOverride)})]);
   return {...license,key,alreadyIssued:false};
@@ -50,19 +53,27 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   if(expired&&license.status==='active')await pool.query(`update licenses set status='expired' where id=$1 and status='active'`,[license.id]);
   let installationValid=true;
   if(validLicense&&input.installationId){
-    const maxInstallations=Number(policy.max_installations||0);
-    if(maxInstallations>0){
-      const count=(await pool.query("select count(*)::int count from activations where license_id=$1 and status in ('active','locked')",[license.id])).rows[0]?.count||0;
-      const activationRows=(await pool.query("select 1 from activations where license_id=$1 and installation_id=$2 limit 1",[license.id,input.installationId])).rows;
-      const already=activationRows.length>0;
-      if(!already&&Number(count)>=maxInstallations)return{valid:false,code:'INSTALLATION_LIMIT_REACHED' as const,status:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy};
-    }
-    const existing=(await pool.query(`select status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
-    installationValid=!existing||existing.status==='active';
-    if(installationValid){
-      const t=input.telemetry&&typeof input.telemetry==='object'?input.telemetry:{};
-      await pool.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_hostname,last_platform,last_architecture,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict(license_id,installation_id) do update set last_seen_at=now(),product_version=coalesce(excluded.product_version,activations.product_version),metadata=coalesce(activations.metadata,'{}'::jsonb)||excluded.metadata,last_ip=coalesce(excluded.last_ip,activations.last_ip),last_user_agent=coalesce(excluded.last_user_agent,activations.last_user_agent),last_hostname=coalesce(excluded.last_hostname,activations.last_hostname),last_platform=coalesce(excluded.last_platform,activations.last_platform),last_architecture=coalesce(excluded.last_architecture,activations.last_architecture),last_client=coalesce(excluded.last_client,activations.last_client),last_client_version=coalesce(excluded.last_client_version,activations.last_client_version),last_provider=coalesce(excluded.last_provider,activations.last_provider),last_region=coalesce(excluded.last_region,activations.last_region),current_components=case when excluded.current_components<>'{}'::jsonb then excluded.current_components else activations.current_components end`,[license.id,input.installationId,input.productVersion??null,JSON.stringify(input.metadata??{}),input.requestIp??null,input.userAgent??null,t.hostname?t.hostname:null,t.platform?t.platform:null,t.architecture?t.architecture:null,t.client?t.client:null,t.clientVersion?t.clientVersion:null,t.provider?t.provider:null,t.region?t.region:null,t.components&&typeof t.components==='object'?JSON.stringify(t.components):'{}']);
-    }
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(license.id)]);
+      const existing=(await client.query(`select id,status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
+      const reserved=(await client.query(`select installation_id,status from activations where license_id=$1 and installation_id<>$2 and status in ('active','locked') order by last_seen_at desc limit 1`,[license.id,input.installationId])).rows[0];
+      if(reserved){
+        await client.query('ROLLBACK');
+        return{valid:false,code:'INSTALLATION_LIMIT_REACHED' as const,status:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy};
+      }
+      if(existing?.status==='locked'){
+        installationValid=false;
+      }else{
+        const t=input.telemetry&&typeof input.telemetry==='object'?input.telemetry:{};
+        await client.query(`insert into activations(license_id,installation_id,product_version,status,metadata,last_ip,last_user_agent,last_hostname,last_platform,last_architecture,last_client,last_client_version,last_provider,last_region,current_components) values($1,$2,$3,'active',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict(license_id,installation_id) do update set status='active',last_seen_at=now(),product_version=coalesce(excluded.product_version,activations.product_version),metadata=coalesce(activations.metadata,'{}'::jsonb)||excluded.metadata,last_ip=coalesce(excluded.last_ip,activations.last_ip),last_user_agent=coalesce(excluded.last_user_agent,activations.last_user_agent),last_hostname=coalesce(excluded.last_hostname,activations.last_hostname),last_platform=coalesce(excluded.last_platform,activations.last_platform),last_architecture=coalesce(excluded.last_architecture,activations.last_architecture),last_client=coalesce(excluded.last_client,activations.last_client),last_client_version=coalesce(excluded.last_client_version,activations.last_client_version),last_provider=coalesce(excluded.last_provider,activations.last_provider),last_region=coalesce(excluded.last_region,activations.last_region),current_components=case when excluded.current_components<>'{}'::jsonb then excluded.current_components else activations.current_components end`,[license.id,input.installationId,input.productVersion??null,JSON.stringify(input.metadata??{}),input.requestIp??null,input.userAgent??null,t.hostname?t.hostname:null,t.platform?t.platform:null,t.architecture?t.architecture:null,t.client?t.client:null,t.clientVersion?t.clientVersion:null,t.provider?t.provider:null,t.region?t.region:null,t.components&&typeof t.components==='object'?JSON.stringify(t.components):'{}']);
+      }
+      await client.query('COMMIT');
+    }catch(error){
+      try{await client.query('ROLLBACK')}catch{}
+      throw error;
+    }finally{client.release()}
   }
   const valid=validLicense&&installationValid;
   const code=valid?'LICENSE_VALID':!componentAllowed?'COMPONENT_NOT_ENTITLED':!installationValid?'INSTALLATION_LOCKED_OR_TERMINATED':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':`LICENSE_${String(license.status).toUpperCase()}`;
