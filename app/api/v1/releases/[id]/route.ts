@@ -46,10 +46,10 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release lifecycle control failed',code:'RELEASE_LIFECYCLE_CONTROL_FAILED'},{status:400});}
     }
   }
-  if(current.release_type!=='update'){
-    return NextResponse.json({error:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER',code:'BASE_RELEASE_CONTROLLED_BY_LICENSE_MANAGER'},{status:403});
-  }
   try{
+    // Publication/promotion are customer-facing release lifecycle actions for both
+    // Base and Update releases. Technical validation/approval remains protected
+    // above by releases.control and is enforced again by publishRelease/promoteRelease.
     if(action==='publish')return NextResponse.json({release:await publishRelease(id,undefined,`api:${auth.name}`)});
     if(action==='withdraw')return NextResponse.json({release:await withdrawRelease(id,undefined,`api:${auth.name}`)});
     if(action==='disable'||action==='pause'){const row=(await db().query("select * from releases where id=$1 limit 1",[id])).rows[0];if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});const release=(await db().query("update releases set status='disabled' where id=$1 returning *",[id])).rows[0];await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.pause','release',$2,$3)",["api:"+auth.name,id,JSON.stringify({previous_status:row.status})]);return NextResponse.json({release});}
