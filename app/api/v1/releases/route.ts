@@ -21,7 +21,7 @@ export async function POST(request:Request){
   try{
     const productSlug=String(body.product||body.product_code||body.product_id||'').trim().toLowerCase();
     if(!productSlug)return NextResponse.json({error:'PRODUCT_REQUIRED'},{status:400});
-    const product=(await db().query("select id from products where id=$1 or slug=$1 limit 1",[productSlug])).rows[0];
+    const product=(await db().query("select id from products where slug=$1 or id::text=$1 limit 1",[productSlug])).rows[0];
     if(!product)return NextResponse.json({error:'PRODUCT_NOT_FOUND'},{status:404});
     const releaseType=String(body.release_type||body.releaseType||'update').trim().toLowerCase();
     if(!['base','update'].includes(releaseType))return NextResponse.json({error:'INVALID_RELEASE_TYPE'},{status:400});
