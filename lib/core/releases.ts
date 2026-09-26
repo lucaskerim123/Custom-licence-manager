@@ -72,8 +72,9 @@ async function scanPackage(row:any,bytes:Buffer){
       const compatibility=semver.test(String(pkg.minimumBaseVersion||''))&&Number.isInteger(protocol)&&protocol>=1&&pkg.checkpointRequired===true;
       const componentVersions=pkg.componentVersions&&typeof pkg.componentVersions==='object'&&!Array.isArray(pkg.componentVersions)?pkg.componentVersions:null;
       const componentVersionsValid=Boolean(componentVersions&&components.every((component:string)=>{
-        const expected=component==='base'?String(pkg.minimumBaseVersion||''):String(pkg.version||'');
-        return String(componentVersions[component]||'')===expected;
+        const value=String(componentVersions[component]||'').trim();
+        if(component==='base')return value===String(pkg.minimumBaseVersion||'').trim();
+        return SEMVER.test(value);
       })&&Object.keys(componentVersions).every((key)=>components.includes(String(key))));
       const database=pkg?.database&&typeof pkg.database==='object'&&!Array.isArray(pkg.database)?pkg.database:null;
       const migrations=Array.isArray(database?.migrations)?database.migrations:[];
