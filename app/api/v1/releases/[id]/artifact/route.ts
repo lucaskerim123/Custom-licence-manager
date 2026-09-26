@@ -39,18 +39,18 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
     return last||new Response(null,{status:404});
   };
   let assetUrl=String(row.artifact_url||'').trim();
-  if(!assetUrl){
-    const repo=String(row.artifact_repo||row.source_repo||'').trim();
-    const tag=String(row.manifest?.artifactTag||'').trim();
-    const name=String(row.artifact_name||'').trim();
-    if(!repo||!tag||!name)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
+  const repo=String(row.artifact_repo||row.source_repo||'').trim();
+  const tag=String(row.manifest?.artifactTag||'').trim();
+  const name=String(row.artifact_name||'').trim();
+  if(repo&&tag&&name){
     const releaseResponse=await githubFetch('https://api.github.com/repos/'+repo+'/releases/tags/'+encodeURIComponent(tag),'application/vnd.github+json');
-    if(!releaseResponse.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
+    if(!releaseResponse.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED',stage:'release_lookup',github_status:releaseResponse.status},{status:503});
     const release:any=await releaseResponse.json();
     const asset=Array.isArray(release.assets)?release.assets.find((item:any)=>String(item.name||'')===name):null;
-    if(!asset?.url)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
+    if(!asset?.url)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED',stage:'asset_lookup'},{status:404});
     assetUrl=String(asset.url);
   }
+  if(!assetUrl)return NextResponse.json({error:'ARTIFACT_NOT_CONFIGURED',code:'ARTIFACT_NOT_CONFIGURED'},{status:404});
 
   const github=githubAssetUrl(assetUrl);
   let response:Response;
@@ -65,7 +65,7 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
     response=await fetch(assetUrl,{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
   }
 
-  if(!response.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
+  if(!response.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED',stage:'asset_download',github_status:response.status},{status:503});
   const bytes=Buffer.from(await response.arrayBuffer());
   const expected=String(row.checksum||'').trim().toLowerCase();
   const actual=createHash('sha256').update(bytes).digest('hex');
