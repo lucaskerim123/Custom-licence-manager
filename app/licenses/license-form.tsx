@@ -70,7 +70,7 @@ export default function LicenseForm({products}:{products:{id:string,name:string}
    <label>Customer external ID<input className="input" name="customer" defaultValue={editing?.customer_external_id||''} placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
    <label>External reference<input className="input" name="reference" defaultValue={editing?.external_reference||''} placeholder="Order / subscription reference"/></label>
    <label>Expiry<input className="input" name="expires" type="datetime-local" defaultValue={expires}/></label>
-   <label>Max installations<input className="input" name="max_installations" type="number" min="1" max="100" defaultValue={Number(policy.max_installations||1)}/></label>
+   <label>Installation limit<input className="input" value="1 active system" readOnly/><small className="muted">OrbitFS licences are permanently limited to one bound system at a time. Base and add-ons share this one system.</small></label>
    <fieldset className="component-editor"><legend>Component entitlements</legend>
     <label><input type="checkbox" checked readOnly/> OrbitFS Base</label>
     <label><input type="checkbox" name="orbitfs_apex" defaultChecked={Boolean(components.orbitfs_apex)}/> OrbitFS APEX</label>
