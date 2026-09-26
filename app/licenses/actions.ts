@@ -10,15 +10,19 @@ export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:stri
   if(!roles.includes(user.role)) return {ok:false,key:'',error:'You do not have permission to issue licenses'};
   const productId=String(formData.get('product_id')||'');
   if(!productId) return {ok:false,key:'',error:'Select a product'};
-  const product=(await db().query("select id from products where id=$1 and status='active'",[productId])).rows[0];
+  const product=(await db().query("select id,slug from products where id=$1 and status='active'",[productId])).rows[0];
   if(!product) return {ok:false,key:'',error:'Product not found or disabled'};
+  if(product.slug!=='orbitfs_base')return {ok:false,key:'',error:'OrbitFS add-ons are component entitlements on the Base licence'};
   const customer=String(formData.get('customer')||'').trim();
   const customerOverride=customer.toUpperCase()==='ADMIN';
   const expires=String(formData.get('expires')||'');
   let expiresAt:Date|null=null;
   if(expires){expiresAt=new Date(expires);if(Number.isNaN(expiresAt.getTime()))return {ok:false,key:'',error:'Invalid expiry'};}
   try{
-    const result=await issueLicense({productId,customerExternalId:customer||null,customerOverride,externalReference:String(formData.get('reference')||'')||null,expiresAt,actorUserId:user.id,actor:user.email,metadata:customerOverride?{issuance_mode:'admin_override'}:{}});
+    const maxInstallations=Math.min(100,Math.max(1,Number(formData.get('max_installations')||1)));
+    const components={orbitfs_base:true,orbitfs_apex:formData.get('orbitfs_apex')==='on',orbitfs_mcp:formData.get('orbitfs_mcp')==='on',orbitfs_studio:formData.get('orbitfs_studio')==='on'};
+    const metadata={...(customerOverride?{issuance_mode:'admin_override'}:{}),license_policy:{max_installations:maxInstallations,components}};
+    const result=await issueLicense({productId,customerExternalId:customer||null,customerOverride,externalReference:String(formData.get('reference')||'')||null,expiresAt,actorUserId:user.id,actor:user.email,metadata});
     return {ok:true,key:result.key,error:''};
   }catch(e){return {ok:false,key:'',error:e instanceof Error?e.message:'Unable to issue license'};}
 }
