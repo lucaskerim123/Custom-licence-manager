@@ -11,7 +11,12 @@ export async function GET(request:Request){
   const activations=ids.length?(await db().query("select id,license_id,installation_id,status,product_version,first_seen_at,last_seen_at,last_provider,last_region,last_platform,last_architecture,last_client,last_client_version,last_deployment_id,last_deployment_url,last_deployment_status,last_operation,deployment_count,current_components from activations where license_id=any($1::uuid[]) order by last_seen_at desc nulls last",[ids])).rows:[];
   const grouped=new Map<string,any[]>();
   for(const activation of activations){const key=String(activation.license_id);const list=grouped.get(key)||[];list.push(activation);grouped.set(key,list);}
-  return NextResponse.json({licenses:rows.map((row:any)=>({...row,activations:grouped.get(String(row.id))||[]}))});
+  return NextResponse.json({licenses:rows.map((row:any)=>({
+    ...row,
+    components:row?.metadata?.license_policy?.components||{},
+    max_installations:row?.metadata?.license_policy?.max_installations??null,
+    activations:grouped.get(String(row.id))||[]
+  }))});
 }
 
 export async function POST(request:Request){
