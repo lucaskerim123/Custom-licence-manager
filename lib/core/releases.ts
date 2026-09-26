@@ -215,6 +215,21 @@ async function checkArtifact(row: any) {
     }
     return new Response(null,{status:lastStatus||404});
   };
+  const downloadGithubAsset = async (apiUrl:string) => {
+    const metadata = await githubFetch(apiUrl,'application/vnd.github+json');
+    let browserUrl = '';
+    if(metadata.ok){
+      try{const value:any=await metadata.clone().json();browserUrl=String(value?.browser_download_url||'').trim();}catch{}
+    }
+    const apiDownload = await githubFetch(apiUrl,'application/octet-stream');
+    if(apiDownload.ok)return apiDownload;
+    if(browserUrl){
+      const browserDownload=await githubFetch(browserUrl,'application/octet-stream');
+      if(browserDownload.ok)return browserDownload;
+      if(![401,403,404].includes(browserDownload.status))return browserDownload;
+    }
+    return apiDownload;
+  };
 
   try {
     let assetUrl = String(row.artifact_url || '').trim();
@@ -239,7 +254,9 @@ async function checkArtifact(row: any) {
 
     if (!assetUrl) return { checks: [{ key: 'artifact_reference', ok: false, message: 'Artifact tag or URL is missing.' }] };
 
-    const response = await githubFetch(assetUrl, 'application/octet-stream');
+    const response = /^https:\/\/api\.github\.com\/repos\/[^/]+\/[^/]+\/releases\/assets\/\d+$/.test(assetUrl)
+      ? await downloadGithubAsset(assetUrl)
+      : await githubFetch(assetUrl, 'application/octet-stream');
     if (!response.ok) return { checks: [{ key: 'artifact_reachable', ok: false, message: `Artifact returned HTTP ${response.status}. Check License Manager GitHub token Contents access to ${repo}.` }] };
     const length = Number(response.headers.get('content-length') || 0);
     if (length > MAX_ARTIFACT_BYTES) return { checks: [{ key: 'artifact_size', ok: false, message: `Artifact exceeds ${MAX_ARTIFACT_BYTES} bytes.` }] };
