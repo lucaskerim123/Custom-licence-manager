@@ -58,7 +58,9 @@ async function scanPackage(row:any,bytes:Buffer){
 
     if(isBundle){
       const components=canonicalComponents(pkg.components,'update');
+      const recordComponents=canonicalComponents(row.manifest?.components,'update');
       const validTargets=components.length>0&&components.every((x:string)=>['base','mcp','apex','studio'].includes(x));
+      const componentRecordMatches=[...components].sort().join(',')===[...recordComponents].sort().join(',');
       const engineTargets=components.filter((x:string)=>x!=='base');
       const wantsBase=components.includes('base');
       const panel=pkg?.payloads?.panel??null;
@@ -91,7 +93,8 @@ async function scanPackage(row:any,bytes:Buffer){
       if(schemaChanged&&changedMigrationCount<1)migrationsValid=false;
       const engineDatabaseOk=!engine||JSON.stringify(engine.database||null)===JSON.stringify(database);
       const databaseOk=migrationsValid&&engineDatabaseOk;
-      checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersionsValid&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets, component versions and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersionsValid?'valid.':'invalid.')});
+      checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentRecordMatches&&componentVersionsValid&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets, component versions and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentRecordMatches&&componentVersionsValid?'valid.':'invalid.')});
+      checks.push({key:'package_components_match',ok:componentRecordMatches,message:componentRecordMatches?'Release record components exactly match the packaged Update targets.':'Release record components do not match the packaged Update targets.'});
       checks.push({key:'package_update_schema',ok:databaseOk,message:databaseOk?(migrations.length?`Customer database migration contract contains ${migrations.length} verified immutable migration(s).`:'Update release has a valid empty customer database migration contract.'):'Update database/schema changes require a valid checksummed orbitfs-db-migrations-v1 contract that matches the Engine payload.'});
       checks.push({key:'package_engine_compatibility',ok:compatibility,message:compatibility?'Minimum Base version, deployer protocol and checkpoint contract are valid.':'Update bundle compatibility metadata is invalid.'});
 
