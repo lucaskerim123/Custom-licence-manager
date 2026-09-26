@@ -11,13 +11,10 @@ export async function issueLicense(input: { productId: string; customerExternalI
   const pool=db();
   const state=(await pool.query('select system_enabled,licensing_enabled,maintenance_mode from system_settings where id=true')).rows[0];
   if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode) throw new Error('License authority is offline');
-  // Add-ons are subordinate to OrbitFS Base. A customer may have Base alone
-  // or Base plus any add-ons, but an add-on cannot exist without Base.
+  // OrbitFS uses one Base licence per customer. APEX, MCP and Studio are
+  // component entitlements on that Base licence, never standalone licence rows.
   const productRow=(await pool.query('select slug from products where id=$1 limit 1',[input.productId])).rows[0];
-  if(productRow && productRow.slug!=='orbitfs_base' && input.customerExternalId){
-    const baseLicense=(await pool.query("select l.id from licenses l join products p on p.id=l.product_id where p.slug='orbitfs_base' and l.customer_external_id=$1 and l.status not in ('revoked','expired') limit 1",[String(input.customerExternalId)])).rows[0];
-    if(!baseLicense)throw new Error('OrbitFS Base license is required before an add-on license can be issued');
-  }
+  if(productRow && productRow.slug!=='orbitfs_base')throw new Error('OrbitFS add-ons are component entitlements on the Base license and cannot be issued as standalone licenses');
 
   // A customer has one current license per product. Retries or repeated issuance
   // requests reuse the existing non-terminal record instead of creating duplicates.
