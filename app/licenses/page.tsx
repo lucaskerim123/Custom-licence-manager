@@ -3,6 +3,7 @@ import {requireUser} from '../../lib/session';
 import {licenseControlAction} from './actions';
 import LicenseForm,{RotateLicenseButton} from './license-form';
 import DeleteLicenseButton from './DeleteLicenseButton';
+import LicenseEditor from './license-editor';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import TableTools from '../components/TableTools';
@@ -14,7 +15,7 @@ export default async function Licenses(){
  const user=await requireUser();
  const [products,licenses]=await Promise.all([
   db().query("select id,name from products where status='active' order by name"),
-  db().query(`select l.id,l.license_key_last4,l.status,l.customer_external_id,l.customer_override,l.external_reference,l.expires_at,p.name product,(select count(*) from activations a where a.license_id=l.id) installation_count from licenses l join products p on p.id=l.product_id order by l.created_at desc`)
+  db().query(`select l.id,l.license_key_last4,l.status,l.customer_external_id,l.customer_override,l.external_reference,l.expires_at,l.metadata,p.name product,p.slug product_code,(select count(*) from activations a where a.license_id=l.id) installation_count from licenses l join products p on p.id=l.product_id order by l.created_at desc`)
  ]);
  const statuses=[...new Set(licenses.rows.map((x:any)=>x.status))];
 
@@ -52,7 +53,7 @@ export default async function Licenses(){
           <input type="hidden" name="action" value={l.status==='active'?'suspend':'activate'}/>
           <button className="button secondary license-action-button">{l.status==='active'?'Suspend':'Reactivate'}</button>
          </form>}
-         <DeleteLicenseButton action={licenseControlAction} licenseId={l.id}/>
+         <LicenseEditor license={l}/><DeleteLicenseButton action={licenseControlAction} licenseId={l.id}/>
         </div>}</td>
        </tr>)}</tbody>
       </table>
