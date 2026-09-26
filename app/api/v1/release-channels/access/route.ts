@@ -112,17 +112,7 @@ export async function POST(request: Request) {
   const channel = String(body.channel || '').trim().toLowerCase();
   const externalReference = body.external_reference ?? body.externalReference ?? null;
 
-  if (!licenseId || !channel) return NextResponse.json({ error: 'LICENSE_AND_CHANNEL_REQUIRED' }, { status: 400 });
-
-  const channelRow = (
-    await db().query(
-      'select id,access_mode,enabled,customer_visible,access_request_enabled,self_join_enabled from release_channels where channel=$1 limit 1',
-      [channel],
-    )
-  ).rows[0];
-
-  if (!channelRow) return NextResponse.json({ error: 'CHANNEL_NOT_FOUND' }, { status: 404 });
-  if (!channelRow.enabled || !channelRow.customer_visible) return NextResponse.json({ error: 'CHANNEL_UNAVAILABLE' }, { status: 409 });
+  if (!licenseId) return NextResponse.json({ error: 'LICENSE_REQUIRED', code:'LICENSE_REQUIRED' }, { status: 400 });
 
   if (action === 'list_access') {
     const rows = (await db().query(
@@ -139,6 +129,17 @@ export async function POST(request: Request) {
     )).rows;
     return NextResponse.json({ requests: rows });
   }
+
+  if (!channel) return NextResponse.json({ error: 'CHANNEL_REQUIRED', code:'CHANNEL_REQUIRED' }, { status: 400 });
+  const channelRow = (
+    await db().query(
+      'select id,access_mode,enabled,customer_visible,access_request_enabled,self_join_enabled from release_channels where channel=$1 limit 1',
+      [channel],
+    )
+  ).rows[0];
+
+  if (!channelRow) return NextResponse.json({ error: 'CHANNEL_NOT_FOUND', code:'CHANNEL_NOT_FOUND' }, { status: 404 });
+  if (!channelRow.enabled || !channelRow.customer_visible) return NextResponse.json({ error: 'CHANNEL_UNAVAILABLE', code:'CHANNEL_UNAVAILABLE' }, { status: 409 });
 
   if (action === 'request') {
     if (!channelRow.access_request_enabled) return NextResponse.json({ error: 'ACCESS_REQUESTS_DISABLED' }, { status: 409 });
