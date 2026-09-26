@@ -244,7 +244,7 @@ async function checkWorkflow(row: any) {
   const repo = String(row.artifact_repo || row.source_repo || '').trim();
   if (!runId || !repo || !repo.includes('/')) return { key: 'ci', ok: false, message: 'Release CI run metadata is missing.' };
   const headers = new Headers({ accept: 'application/vnd.github+json', 'user-agent': 'OrbitFS-License-Master/2', 'x-github-api-version': '2022-11-28' });
-  const token = String(process.env.GITHUB_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '').trim();
+  const token = String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN || process.env.GITHUB_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '').trim();
   if (token) headers.set('authorization', `Bearer ${token}`);
   try {
     const response = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}`, { headers, cache: 'no-store' });
