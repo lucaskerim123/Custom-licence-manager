@@ -3,6 +3,7 @@ import { issueLicense, rotateLicense, setInstallationStatus, setLicenseStatus, d
 import { db } from '../../lib/db';
 import { sendPulse } from '../../lib/core/settings';
 import { requireUser } from '../../lib/session';
+import { revalidatePath } from 'next/cache';
 
 const roles=['owner','admin','operator'];
 export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:string}, formData:FormData){
@@ -23,6 +24,7 @@ export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:stri
     const components={orbitfs_base:true,orbitfs_apex:formData.get('orbitfs_apex')==='on',orbitfs_mcp:formData.get('orbitfs_mcp')==='on',orbitfs_studio:formData.get('orbitfs_studio')==='on'};
     const metadata={...(customerOverride?{issuance_mode:'admin_override'}:{}),license_policy:{max_installations:maxInstallations,components}};
     const result=await issueLicense({productId,customerExternalId:customer||null,customerOverride,externalReference:String(formData.get('reference')||'')||null,expiresAt,actorUserId:user.id,actor:user.email,metadata});
+    revalidatePath('/licenses');
     return {ok:true,key:result.key,error:''};
   }catch(e){return {ok:false,key:'',error:e instanceof Error?e.message:'Unable to issue license'};}
 }
@@ -86,6 +88,7 @@ export async function updateLicenseAction(_prev:{ok:boolean,error:string}, formD
     const updated=(await db().query(`update licenses set customer_external_id=$2,external_reference=$3,expires_at=$4,metadata=$5 where id=$1 returning id,status,customer_external_id,external_reference,expires_at,metadata`,[id,customer,reference,expiresAt,JSON.stringify(metadata)])).rows[0];
     await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.update','license',$3,$4)`,[user.id,user.email,id,JSON.stringify({before:{customer_external_id:current.customer_external_id,external_reference:current.external_reference,expires_at:current.expires_at,license_policy:existingPolicy},after:{customer_external_id:customer,external_reference:reference,expires_at:expiresAt,license_policy:policy}})]);
     await sendPulse(user.id,user.email,'license-updated',{license_id:id,customer_external_id:customer,components});
+    revalidatePath('/licenses');
     return {ok:true,error:''};
   }catch(e){return {ok:false,error:e instanceof Error?e.message:'Unable to update license'};}
 }
