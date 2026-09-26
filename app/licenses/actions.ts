@@ -38,7 +38,7 @@ export async function rotateLicenseAction(_prev:{ok:boolean,key:string,error:str
     if(action==='suspend'||action==='activate'||action==='revoke'){await setLicenseStatus(id,action==='activate'?'active':action==='suspend'?'suspended':'revoked',user.id,user.email);return {ok:true,key:'',error:''};}
   if(installationId&&['unlock','lock','terminate'].includes(action)){
     const activation=(await db().query('select id from activations where id=$1 and license_id=$2',[installationId,id])).rows[0];
-    if(activation)await setInstallationStatus(activation.id,action==='unlock'?'active':action==='lock'?'locked':'terminated',user.id,user.email);
+    if(activation)await setInstallationStatus(activation.id,action==='unlock'?'terminated':action==='lock'?'locked':'terminated',user.id,user.email);
   }
     return {ok:true,key:'',error:''};
   }catch(e){return {ok:false,key:'',error:e instanceof Error?e.message:'License control failed'};}
@@ -53,7 +53,7 @@ export async function licenseControlAction(formData:FormData){
   if(action==='delete'){await deleteLicense(id,user.id,user.email);return;}
   if(installationId&&['unlock','lock','terminate'].includes(action)){
     const activation=(await db().query('select id from activations where id=$1 and license_id=$2',[installationId,id])).rows[0];
-    if(activation)await setInstallationStatus(activation.id,action==='unlock'?'active':action==='lock'?'locked':'terminated',user.id,user.email);
+    if(activation)await setInstallationStatus(activation.id,action==='unlock'?'terminated':action==='lock'?'locked':'terminated',user.id,user.email);
   }
 }
 
