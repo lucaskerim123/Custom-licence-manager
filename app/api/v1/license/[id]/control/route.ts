@@ -50,11 +50,10 @@ export async function POST(
       const allowed = new Set(['orbitfs_base', 'orbitfs_apex', 'orbitfs_mcp', 'orbitfs_studio']);
       const supplied = body?.components && typeof body.components === 'object' ? body.components : {};
       const existingPolicy = current.metadata && typeof current.metadata === 'object' && current.metadata.license_policy && typeof current.metadata.license_policy === 'object' ? current.metadata.license_policy : {};
-      const existingComponents = existingPolicy.components && typeof existingPolicy.components === 'object' ? existingPolicy.components : {};
       const components: Record<string, boolean> = { orbitfs_base: true };
       for (const key of allowed) {
         if (key === 'orbitfs_base') continue;
-        components[key] = Boolean((existingComponents as any)[key] || supplied[key]);
+        components[key] = Boolean(supplied[key]);
       }
       const metadata = { ...(current.metadata || {}), license_policy: { ...existingPolicy, components } };
       const updated = (await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0];
