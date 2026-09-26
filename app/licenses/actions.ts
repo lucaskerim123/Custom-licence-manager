@@ -65,9 +65,9 @@ export async function updateLicenseAction(_prev:{ok:boolean,error:string}, formD
   try{
     const current=(await db().query(`select l.id,l.customer_external_id,l.external_reference,l.expires_at,l.metadata,l.status,p.slug product from licenses l join products p on p.id=l.product_id where l.id=$1 limit 1`,[id])).rows[0];
     if(!current)return {ok:false,error:'License not found'};
-    const customer=String(formData.get('customer_external_id')||'').trim()||null;
-    const reference=String(formData.get('external_reference')||'').trim()||null;
-    const expires=String(formData.get('expires_at')||'').trim();
+    const customer=String(formData.get('customer_external_id')||formData.get('customer')||'').trim()||null;
+    const reference=String(formData.get('external_reference')||formData.get('reference')||'').trim()||null;
+    const expires=String(formData.get('expires_at')||formData.get('expires')||'').trim();
     let expiresAt:Date|null=null;
     if(expires){expiresAt=new Date(expires);if(Number.isNaN(expiresAt.getTime()))return {ok:false,error:'Invalid expiry'};}
     const maxInstallationsRaw=Number(formData.get('max_installations')||0);
@@ -88,4 +88,12 @@ export async function updateLicenseAction(_prev:{ok:boolean,error:string}, formD
     await sendPulse(user.id,user.email,'license-updated',{license_id:id,customer_external_id:customer,components});
     return {ok:true,error:''};
   }catch(e){return {ok:false,error:e instanceof Error?e.message:'Unable to update license'};}
+}
+
+
+export async function licenseFormAction(prev:{ok:boolean,key:string,error:string}, formData:FormData){
+  const id=String(formData.get('id')||'').trim();
+  if(!id)return issueLicenseAction(prev,formData);
+  const updated=await updateLicenseAction({ok:false,error:''},formData);
+  return {ok:updated.ok,key:'',error:updated.error};
 }
