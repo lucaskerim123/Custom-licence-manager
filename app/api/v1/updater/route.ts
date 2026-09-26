@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../lib/auth';
 import {db} from '../../../../lib/db';
@@ -52,6 +53,13 @@ export async function GET(request:Request){
     if(String(release.release_type)!==type)return NextResponse.json({ok:false,code:'RELEASE_TYPE_MISMATCH'},{status:409});
 
     const manifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
+    const releaseComponents=Array.isArray(manifest.components)?manifest.components.map((x:any)=>String(x||'').toLowerCase()):[];
+    if(release.release_type==='update'){
+      const policy=validation.metadata&&typeof validation.metadata==='object'&&validation.metadata.license_policy&&typeof validation.metadata.license_policy==='object'?validation.metadata.license_policy:{};
+      const entitled=policy.components&&typeof policy.components==='object'?policy.components:{};
+      const missing=releaseComponents.filter((component:string)=>component!=='base'&&!Boolean(entitled['orbitfs_'+component]));
+      if(missing.length)return NextResponse.json({ok:false,code:'RELEASE_COMPONENT_NOT_ENTITLED',components:missing},{status:403});
+    }
     const descriptor={id:release.id,version:release.version,product:release.product,releaseType:release.release_type,channel:release.channel,status:release.status,reviewStatus:release.review_status,publishedAt:release.published_at||null,sourceRepo:release.source_repo,sourceRef:release.source_ref,sourceCommit:release.source_sha,checksum:release.checksum,artifactSha256:release.checksum,artifactName:release.artifact_name,fileCount:Number(manifest.fileCount||0),components:Array.isArray(manifest.components)?manifest.components:[],minimumBaseVersion:manifest.minimumBaseVersion||manifest.minimum_version||null,minimumEngineDeployerProtocol:Number(manifest.minimumEngineDeployerProtocol||1),checkpointRequired:manifest.checkpointRequired!==false,manifest,artifactUrl:String(new URL(request.url).origin)+'/api/v1/updater?release_id='+encodeURIComponent(release.id)+'&channel='+encodeURIComponent(release.channel)+'&type='+encodeURIComponent(release.release_type)+'&download=1'};
 
     if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor,releases:[descriptor]});
@@ -62,7 +70,11 @@ export async function GET(request:Request){
       ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{headers:{accept:'application/octet-stream',authorization:'Bearer '+String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim(),'x-github-api-version':'2026-03-10','user-agent':'OrbitFS-License-Master'},cache:'no-store',redirect:'follow'})
       : await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
     if(!response.ok)return NextResponse.json({ok:false,code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
-    return new Response(await response.arrayBuffer(),{status:200,headers:{'content-type':response.headers.get('content-type')||'application/octet-stream','content-disposition':response.headers.get('content-disposition')||`attachment; filename="${release.artifact_name||'orbitfs-release'}"`,'cache-control':'private, no-store'}});
+    const bytes=Buffer.from(await response.arrayBuffer());
+    const expected=String(release.checksum||'').trim().toLowerCase();
+    const actual=createHash('sha256').update(bytes).digest('hex');
+    if(!/^[a-f0-9]{64}$/.test(expected)||actual!==expected)return NextResponse.json({ok:false,code:'ARTIFACT_CHECKSUM_MISMATCH'},{status:502});
+    return new Response(bytes,{status:200,headers:{'content-type':response.headers.get('content-type')||'application/octet-stream','content-disposition':response.headers.get('content-disposition')||`attachment; filename="${release.artifact_name||'orbitfs-release'}"`,'cache-control':'private, no-store'}});
   }catch(error:any){return NextResponse.json({ok:false,code:String(error?.code||'UPDATER_ERROR'),error:String(error?.message||'Updater request failed')},{status:Number(error?.status||503)})}
 }
 
