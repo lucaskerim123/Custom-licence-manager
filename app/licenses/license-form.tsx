@@ -54,6 +54,13 @@ export default function LicenseForm({products}:{products:{id:string,name:string}
    <label>Customer external ID<input className="input" name="customer" placeholder="CUST-000001 or ADMIN"/><small className="muted">Use the Billing Store customer number for normal customer licenses.</small></label>
    <label>External reference<input className="input" name="reference" placeholder="Order / subscription reference"/></label>
    <label>Expiry<input className="input" name="expires" type="datetime-local"/></label>
+   <label>Max installations<input className="input" name="max_installations" type="number" min="1" max="100" defaultValue="1"/></label>
+   <fieldset className="component-editor"><legend>Component entitlements</legend>
+    <label><input type="checkbox" checked readOnly/> OrbitFS Base</label>
+    <label><input type="checkbox" name="orbitfs_apex"/> OrbitFS APEX</label>
+    <label><input type="checkbox" name="orbitfs_mcp"/> OrbitFS MCP</label>
+    <label><input type="checkbox" name="orbitfs_studio"/> OrbitFS Studio</label>
+   </fieldset>
    <div className="form-actions"><button className="button" disabled={pending}>{pending?'Issuing…':'Issue license'}</button></div>
   </form>
   {state.error&&<div className="notice dangerBox" style={{marginTop:12}}>{state.error}</div>}
