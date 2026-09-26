@@ -68,17 +68,30 @@ export async function GET(request:Request){
     const github=githubAssetUrl(String(release.artifact_url));
     let response:Response;
     if(github){
-      const token=String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
+      const tokens=[...new Set([
+        String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||'').trim(),
+        String(process.env.GITHUB_RELEASE_TOKEN||'').trim(),
+        String(process.env.GITHUB_TOKEN||'').trim(),
+        ''
+      ])];
+      const githubFetch=async(url:string,accept:string)=>{
+        let last:Response|null=null;
+        for(const token of tokens){
+          const headers:Record<string,string>={accept,'x-github-api-version':'2022-11-28','user-agent':'OrbitFS-License-Master'};
+          if(token)headers.authorization='Bearer '+token;
+          const candidate=await fetch(url,{headers,cache:'no-store',redirect:'follow'});
+          last=candidate;
+          if(candidate.ok)return candidate;
+          if(![401,403,404].includes(candidate.status))return candidate;
+        }
+        return last||new Response(null,{status:404});
+      };
       const apiUrl='https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId;
-      const commonHeaders:Record<string,string>={'x-github-api-version':'2022-11-28','user-agent':'OrbitFS-License-Master'};
-      if(token)commonHeaders.authorization='Bearer '+token;
-      const metadata=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/vnd.github+json'},cache:'no-store'});
+      const metadata=await githubFetch(apiUrl,'application/vnd.github+json');
       let browserUrl='';
-      if(metadata.ok){try{const value:any=await metadata.json();browserUrl=String(value?.browser_download_url||'').trim();}catch{}}
-      response=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
-      if(!response.ok&&browserUrl){
-        response=await fetch(browserUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
-      }
+      if(metadata.ok){try{const value:any=await metadata.clone().json();browserUrl=String(value?.browser_download_url||'').trim();}catch{}}
+      response=await githubFetch(apiUrl,'application/octet-stream');
+      if(!response.ok&&browserUrl)response=await githubFetch(browserUrl,'application/octet-stream');
     }else{
       response=await fetch(String(release.artifact_url),{headers:{accept:'application/octet-stream'},cache:'no-store'});
     }
