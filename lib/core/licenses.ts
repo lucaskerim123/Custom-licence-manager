@@ -42,13 +42,17 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   if(!state?.system_enabled||!state.licensing_enabled||state.maintenance_mode)return{valid:false,code:'AUTHORITY_UNAVAILABLE' as const,status:503,runtime_policy};
   const componentSlug=input.componentSlug||input.productSlug;
   const productFamily=input.productSlug==='orbitfs'?'orbitfs':componentSlug.startsWith('orbitfs_')?'orbitfs':input.productSlug;
-  const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug=$2 and $3='orbitfs' and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key),componentSlug,productFamily]);
+  if(productFamily!=='orbitfs')return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
+  const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key)]);
   if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
-  const license=result.rows[0];const expired=Boolean(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now());const validLicense=license.product_status==='active'&&license.status==='active'&&!expired;
+  const license=result.rows[0];
+  const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'?license.metadata.license_policy:{};
+  const entitledComponents=policy.components&&typeof policy.components==='object'?policy.components:{};
+  const componentAllowed=license.component===componentSlug||(license.component==='orbitfs_base'&&componentSlug.startsWith('orbitfs_')&&Boolean(entitledComponents[componentSlug]));
+  const expired=Boolean(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now());const validLicense=license.product_status==='active'&&license.status==='active'&&!expired&&componentAllowed;
   if(expired&&license.status==='active')await pool.query(`update licenses set status='expired' where id=$1 and status='active'`,[license.id]);
   let installationValid=true;
   if(validLicense&&input.installationId){
-    const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'?license.metadata.license_policy:{};
     const maxInstallations=Number(policy.max_installations||0);
     if(maxInstallations>0){
       const count=(await pool.query("select count(*)::int count from activations where license_id=$1 and status in ('active','locked')",[license.id])).rows[0]?.count||0;
@@ -64,7 +68,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
     }
   }
   const valid=validLicense&&installationValid;
-  const code=valid?'LICENSE_VALID':!installationValid?'INSTALLATION_LOCKED_OR_TERMINATED':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':`LICENSE_${String(license.status).toUpperCase()}`;
+  const code=valid?'LICENSE_VALID':!componentAllowed?'COMPONENT_NOT_ENTITLED':!installationValid?'INSTALLATION_LOCKED_OR_TERMINATED':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':`LICENSE_${String(license.status).toUpperCase()}`;
   return{valid,code,status:valid?200:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy};
 }
 
