@@ -15,7 +15,7 @@ export async function POST(
   const action = String(body?.action || '').trim().toLowerCase();
   const installationId = String(body?.installation_id || body?.installationId || '').trim();
 
-  if (!['rotate', 'unlock', 'suspend', 'terminate', 'revoke', 'activate', 'lock-installation', 'unlock-installation', 'terminate-installation'].includes(action)) {
+  if (!['rotate', 'unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-components', 'lock-installation', 'unlock-installation', 'terminate-installation'].includes(action)) {
     return NextResponse.json({ error: 'Unsupported license control action' }, { status: 400 });
   }
 
@@ -41,6 +41,28 @@ export async function POST(
         previous_license_id: id,
         message: 'License rotated. The new key is returned once and is never stored in plaintext.',
       });
+    }
+
+    if (action === 'set-components') {
+      if (current.product !== 'orbitfs_base') {
+        return NextResponse.json({ error: 'Components can only be attached to an OrbitFS Base license' }, { status: 400 });
+      }
+      const allowed = new Set(['orbitfs_base', 'orbitfs_apex', 'orbitfs_mcp', 'orbitfs_studio']);
+      const supplied = body?.components && typeof body.components === 'object' ? body.components : {};
+      const existingPolicy = current.metadata && typeof current.metadata === 'object' && current.metadata.license_policy && typeof current.metadata.license_policy === 'object' ? current.metadata.license_policy : {};
+      const existingComponents = existingPolicy.components && typeof existingPolicy.components === 'object' ? existingPolicy.components : {};
+      const components: Record<string, boolean> = { orbitfs_base: true };
+      for (const key of allowed) {
+        if (key === 'orbitfs_base') continue;
+        components[key] = Boolean((existingComponents as any)[key] || supplied[key]);
+      }
+      const metadata = { ...(current.metadata || {}), license_policy: { ...existingPolicy, components } };
+      const updated = (await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0];
+      await db().query(
+        `insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'license.components','license',$2,$3)`,
+        [`api:${auth.name}`, id, JSON.stringify({ components })],
+      );
+      return NextResponse.json({ ok: true, action, license: updated, components });
     }
 
     if (['unlock', 'lock-installation', 'unlock-installation', 'terminate-installation'].includes(action)) {
