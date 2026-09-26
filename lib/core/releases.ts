@@ -60,14 +60,22 @@ async function scanPackage(row:any,bytes:Buffer){
       const engine=pkg?.payloads?.engine??null;
       const protocol=Number(pkg.minimumEngineDeployerProtocol);
       const compatibility=semver.test(String(pkg.minimumBaseVersion||''))&&Number.isInteger(protocol)&&protocol>=1&&pkg.checkpointRequired===true;
-      const componentVersions=pkg.componentVersions&&typeof pkg.componentVersions==='object'&&!Array.isArray(pkg.componentVersions);
+      const componentVersions=pkg.componentVersions&&typeof pkg.componentVersions==='object'&&!Array.isArray(pkg.componentVersions)?pkg.componentVersions:null;
+      const componentVersionsValid=Boolean(componentVersions&&components.every((component:string)=>{
+        const expected=component==='base'?String(pkg.minimumBaseVersion||''):String(pkg.version||'');
+        return String(componentVersions[component]||'')===expected;
+      })&&Object.keys(componentVersions).every((key)=>components.includes(String(key))));
       const database=pkg?.database&&typeof pkg.database==='object'&&!Array.isArray(pkg.database)?pkg.database:null;
       const migrations=Array.isArray(database?.migrations)?database.migrations:[];
       const migrationIds=new Set<string>();
-      let migrationsValid=Boolean(database&&database.format==='orbitfs-db-migrations-v1'&&database.mode==='shared-panel'&&database.provider==='supabase'&&Number(database.migrationCount||0)===migrations.length&&Number(pkg.databaseMigrationCount||0)===migrations.length);
+      const changedMigrationCount=Number(pkg.databaseChangedMigrationCount??0);
+      let migrationsValid=Boolean(database&&database.format==='orbitfs-db-migrations-v1'&&database.mode==='shared-panel'&&database.provider==='supabase'&&Number(database.migrationCount||0)===migrations.length&&Number(pkg.databaseMigrationCount||0)===migrations.length&&Number.isInteger(changedMigrationCount)&&changedMigrationCount>=0&&changedMigrationCount<=migrations.length);
       for(const migration of migrations){
-        const id=String(migration?.id||''),file=String(migration?.file||'');
-        if(!id||migrationIds.has(id)||!/^supabase\/migrations\/[A-Za-z0-9._\/-]+\.sql$/.test(file)||migration?.encoding!=='base64'||typeof migration?.data!=='string'){migrationsValid=false;continue;}
+        const id=String(migration?.id||''),file=String(migration?.file||'').replaceAll('\\','/');
+        const match=file.match(/^supabase\/migrations\/(shared|base|apex|mcp|studio)\/(\d{14}_[A-Za-z0-9._-]+)\.sql$/);
+        const component=String(migration?.component||'').toLowerCase();
+        if(!match||id!==match[1]+'.'+match[2]||migrationIds.has(id)||component!==match[1]||migration?.encoding!=='base64'||typeof migration?.data!=='string'){migrationsValid=false;continue;}
+        if(component!=='shared'&&!components.includes(component))migrationsValid=false;
         migrationIds.add(id);
         const sql=Buffer.from(migration.data,'base64');
         const sha=createHash('sha256').update(sql).digest('hex');
@@ -75,10 +83,10 @@ async function scanPackage(row:any,bytes:Buffer){
         if(sql.length!==Number(migration.size)||sha!==String(migration.sha256||'').toLowerCase()||/\b(?:begin|commit|rollback)\s*;/i.test(sqlText)||/\b(?:drop\s+table|drop\s+schema|truncate\s+(?:table\s+)?|alter\s+table[\s\S]{0,300}?drop\s+column)\b/i.test(sqlText))migrationsValid=false;
       }
       const schemaChanged=pkg?.releaseAnalysis?.flags?.schemaChanged===true;
-      if(schemaChanged&&!migrations.length)migrationsValid=false;
+      if(schemaChanged&&changedMigrationCount<1)migrationsValid=false;
       const engineDatabaseOk=!engine||JSON.stringify(engine.database||null)===JSON.stringify(database);
       const databaseOk=migrationsValid&&engineDatabaseOk;
-      checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersions?'valid.':'invalid.')});
+      checks.push({key:'package_manifest',ok:Boolean(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersionsValid&&pkg.payloads&&typeof pkg.payloads==='object'),message:'Update bundle identity, targets, component versions and payload container are '+(pkg.version&&pkg.sourceCommit&&validTargets&&componentVersionsValid?'valid.':'invalid.')});
       checks.push({key:'package_update_schema',ok:databaseOk,message:databaseOk?(migrations.length?`Customer database migration contract contains ${migrations.length} verified immutable migration(s).`:'Update release has a valid empty customer database migration contract.'):'Update database/schema changes require a valid checksummed orbitfs-db-migrations-v1 contract that matches the Engine payload.'});
       checks.push({key:'package_engine_compatibility',ok:compatibility,message:compatibility?'Minimum Base version, deployer protocol and checkpoint contract are valid.':'Update bundle compatibility metadata is invalid.'});
 
@@ -292,6 +300,8 @@ export async function createRelease(input:{productId:string;channel:string;versi
    received_at:new Date().toISOString()
   };
   const manifest={...(existing.manifest||{}),...incomingManifest,build_attempts:[...attemptHistory,buildAttempt]};
+  delete manifest.validation;
+  manifest.validation_invalidated={reason:'new_build_attempt',at:new Date().toISOString(),artifact_run_id:input.artifactRunId??null,source_sha:input.sourceSha??null,checksum:input.checksum??null};
   const row=(await pool.query(
    `update releases set
      source_repo=$2,source_ref=$3,artifact_url=$4,checksum=$5,notes=$6,status='draft',published_at=null,
@@ -333,7 +343,39 @@ export async function createRelease(input:{productId:string;channel:string;versi
  }
  return row;
 }
-export async function validateRelease(id:string, actorUserId?:string|null, actor?:string){const pool=db();const result=await pool.query(`select r.*,p.slug product,p.name product_name,p.status product_status from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id]);const row=result.rows[0];if(!row)return null;const checks:any[]=[];checks.push({key:'product',ok:row.product_status==='active',message:row.product_status==='active'?'Product is active.':'Product is not active.'});checks.push({key:'version',ok:Boolean(String(row.version||'').trim()),message:Boolean(String(row.version||'').trim())?'Version is present.':'Version is missing.'});const releaseNotes=String(row.notes||row.manifest?.releaseNotes||'').trim();checks.push({key:'changelog',ok:Boolean(releaseNotes),message:Boolean(releaseNotes)?'Generated release changelog is present.':'Release changelog is required before release approval.'});checks.push({key:'source',ok:Boolean(row.source_repo&&row.source_ref&&row.source_sha),message:Boolean(row.source_repo&&row.source_ref&&row.source_sha)?'Source repository, ref and commit are recorded.':'Source repository, ref and commit are required.'});const components=canonicalComponents(row.manifest?.components,row.release_type);const componentsOk=row.release_type==='base'?components.length===1&&components[0]==='base':components.length>0&&components.every((x:string)=>ALLOWED_UPDATE_COMPONENTS.has(x));checks.push({key:'components',ok:componentsOk,message:componentsOk?`Release components: ${components.join(', ')}.`:'Release components are missing or invalid.'});const manifestObject=row.manifest&&typeof row.manifest==='object'?row.manifest:{};checks.push({key:'manifest',ok:Object.keys(manifestObject).length>0,message:Object.keys(manifestObject).length>0?'Release manifest is present.':'Release manifest is missing.'});const workflow=await checkWorkflow(row);checks.push(workflow);const artifact=await checkArtifact(row);checks.push(...artifact.checks);const enrichedChecks=enrichValidationChecks(checks);const passed=enrichedChecks.every((x:any)=>x.ok===true);const manifest=validationManifest({...row,manifest:{...(row.manifest||{}),...(artifact.manifestPatch||{}),components}},enrichedChecks,passed?'passed':'failed');const saved=(await pool.query(`update releases set manifest=$2 where id=$1 returning *`,[id,manifest])).rows[0];await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.validate','release',$3,$4)`,[actorUserId??null,actor??'integration-api',id,JSON.stringify({status:passed?'passed':'failed',checks:enrichedChecks})]);return saved;}
+
+async function validateSourceIdentity(row:any){
+ const expected=row.release_type==='base'
+  ? {repo:'lucaskerim123/V1-vercel-base',ref:'base-release'}
+  : {repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE'};
+ const repo=String(row.source_repo||'').trim(),ref=String(row.source_ref||'').trim(),sha=String(row.source_sha||'').trim();
+ const ok=repo===expected.repo&&ref===expected.ref&&/^[a-f0-9]{40}$/i.test(sha);
+ return {key:'source_identity',ok,message:ok?`Source identity is authoritative: ${repo}@${ref} (${sha.slice(0,8)}).`:`Expected ${expected.repo}@${expected.ref} with a full commit SHA.`};
+}
+async function validateUpdateBaseCompatibility(row:any){
+ if(row.release_type!=='update')return {key:'minimum_base',ok:true,message:'Base compatibility check is not required for Base releases.'};
+ const manifest=row.manifest&&typeof row.manifest==='object'?row.manifest:{};
+ const version=String(manifest.minimumBaseVersion||'').trim();
+ if(!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version))return {key:'minimum_base',ok:false,message:'Update minimumBaseVersion is missing or invalid.'};
+ const base=(await db().query(`
+  select r.id,r.version,r.channel,r.status,r.review_status,r.manifest
+  from releases r join products p on p.id=r.product_id
+  where p.slug='orbitfs_base'
+    and r.release_type='base'
+    and r.channel=$1
+    and r.version=$2
+    and r.status='published'
+    and r.review_status='approved'
+    and r.archived_at is null
+  order by r.published_at desc nulls last,r.created_at desc
+  limit 1`,[row.channel,version])).rows[0];
+ if(!base)return {key:'minimum_base',ok:false,message:`No published + approved Base ${version} exists in channel ${row.channel}.`};
+ const m=base.manifest&&typeof base.manifest==='object'?base.manifest:{};
+ const schema=String(m.databaseSchemaSha256||m.releaseInfo?.databaseSchemaSha256||'');
+ const ok=/^[a-f0-9]{64}$/i.test(schema);
+ return {key:'minimum_base',ok,message:ok?`Published Base ${version} in ${row.channel} is a valid compatibility anchor.`:`Published Base ${version} exists but lacks the required customer DB snapshot contract.`};
+}
+export async function validateRelease(id:string, actorUserId?:string|null, actor?:string){const pool=db();const result=await pool.query(`select r.*,p.slug product,p.name product_name,p.status product_status from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id]);const row=result.rows[0];if(!row)return null;const checks:any[]=[];checks.push({key:'product',ok:row.product_status==='active',message:row.product_status==='active'?'Product is active.':'Product is not active.'});checks.push({key:'version',ok:Boolean(String(row.version||'').trim()),message:Boolean(String(row.version||'').trim())?'Version is present.':'Version is missing.'});const releaseNotes=String(row.notes||row.manifest?.releaseNotes||'').trim();checks.push({key:'changelog',ok:Boolean(releaseNotes),message:Boolean(releaseNotes)?'Generated release changelog is present.':'Release changelog is required before release approval.'});checks.push({key:'source',ok:Boolean(row.source_repo&&row.source_ref&&row.source_sha),message:Boolean(row.source_repo&&row.source_ref&&row.source_sha)?'Source repository, ref and commit are recorded.':'Source repository, ref and commit are required.'});checks.push(await validateSourceIdentity(row));checks.push(await validateUpdateBaseCompatibility(row));const components=canonicalComponents(row.manifest?.components,row.release_type);const componentsOk=row.release_type==='base'?components.length===1&&components[0]==='base':components.length>0&&components.every((x:string)=>ALLOWED_UPDATE_COMPONENTS.has(x));checks.push({key:'components',ok:componentsOk,message:componentsOk?`Release components: ${components.join(', ')}.`:'Release components are missing or invalid.'});const manifestObject=row.manifest&&typeof row.manifest==='object'?row.manifest:{};checks.push({key:'manifest',ok:Object.keys(manifestObject).length>0,message:Object.keys(manifestObject).length>0?'Release manifest is present.':'Release manifest is missing.'});const workflow=await checkWorkflow(row);checks.push(workflow);const artifact=await checkArtifact(row);checks.push(...artifact.checks);const enrichedChecks=enrichValidationChecks(checks);const passed=enrichedChecks.every((x:any)=>x.ok===true);const manifest=validationManifest({...row,manifest:{...(row.manifest||{}),...(artifact.manifestPatch||{}),components}},enrichedChecks,passed?'passed':'failed');const saved=(await pool.query(`update releases set manifest=$2 where id=$1 returning *`,[id,manifest])).rows[0];await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.validate','release',$3,$4)`,[actorUserId??null,actor??'integration-api',id,JSON.stringify({status:passed?'passed':'failed',checks:enrichedChecks})]);return saved;}
 export async function setReleaseReview(id:string,reviewStatus:'approved'|'rejected',actorUserId?:string|null,actor?:string,reason?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');if(reviewStatus==='approved'&&row.manifest?.validation?.status!=='passed')throw new Error('Release must pass validation before approval');const result=await pool.query(`update releases set review_status=$2,status=case when $2='rejected' then 'disabled' when status='disabled' then 'draft' else status end where id=$1 returning *`,[id,reviewStatus]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[actorUserId??null,actor??'admin','release.review',id,JSON.stringify({review_status:reviewStatus,reason:reason||null})]);return result.rows[0];}
 export async function publishRelease(id:string,actorUserId?:string|null,actor?:string){const pool=db();const settings=(await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];if(!settings?.system_enabled||!settings.release_system_enabled||!settings.deployment_enabled)throw new Error('Release/deployment system is offline');const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.review_status!=='approved')throw new Error('Release must be approved before publication');if(row.manifest?.validation?.status!=='passed')throw new Error('Release must pass validation before publication');const result=await pool.query(`update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued' where id=$1 and review_status='approved' returning *`,[id]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.publish','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({deployment_status:'queued'})]);return result.rows[0];}
 export async function promoteRelease(id:string,targetChannel:string,actorUserId?:string|null,actor?:string){
@@ -412,4 +454,4 @@ export async function markReleaseRolledBack(id:string,reason:string,actorUserId?
  await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)",[actorUserId??null,actor??'dev-panel',kind==='revert'?'release.reverted':'release.rolled_back',id,JSON.stringify({version:row.version,release_type:row.release_type,previous_status:row.status,reason:why})]);
  return result??null;
 }
-export async function updateReleasePresentation(id:string,input:any,actorUserId?:string|null,actor?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');const oldManifest=row.manifest||{};const nextManifest={...oldManifest};for(const [key,value] of Object.entries(input||{})){if(['title','description','customer_notes','internal_notes','severity','required','rollout','minimum_version','rollback_version'].includes(key))nextManifest[key]=value;}const notes=input?.changelog!==undefined?String(input.changelog||''):row.notes;const result=await pool.query(`update releases set notes=$2,manifest=$3 where id=$1 returning *`,[id,notes,nextManifest]);await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.presentation.update','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({fields:Object.keys(input||{})})]);return result.rows[0]??null;}
+export async function updateReleasePresentation(id:string,input:any,actorUserId?:string|null,actor?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');const oldManifest=row.manifest||{};const nextManifest={...oldManifest};for(const [key,value] of Object.entries(input||{})){if(['title','description','customer_notes','internal_notes','severity','required','rollout','minimum_version','rollback_version'].includes(key))nextManifest[key]=value;}const notes=input?.changelog!==undefined?String(input.changelog||''):row.notes;if(input?.changelog!==undefined){delete nextManifest.validation;nextManifest.validation_invalidated={reason:'changelog_changed_after_validation',at:new Date().toISOString()};}const result=await pool.query(`update releases set notes=$2,manifest=$3,review_status=case when $4 then 'pending' else review_status end where id=$1 returning *`,[id,notes,nextManifest,input?.changelog!==undefined]);await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.presentation.update','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({fields:Object.keys(input||{})})]);return result.rows[0]??null;}
