@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../../../lib/auth';
 import {db} from '../../../../../../lib/db';
@@ -16,7 +17,7 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   const auth=await integrationAuthorized(request,'releases.read');
   if(!auth)return NextResponse.json({error:'UNAUTHORIZED',code:'UNAUTHORIZED'},{status:401});
   const {id}=await params;
-  const row=(await db().query("select artifact_url,artifact_name,artifact_repo,source_repo,manifest from releases where id=$1 limit 1",[id])).rows[0];
+  const row=(await db().query("select artifact_url,artifact_name,artifact_repo,source_repo,checksum,manifest from releases where id=$1 limit 1",[id])).rows[0];
   if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
 
   const token=String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||process.env.GITHUB_TOKEN||'').trim();
@@ -51,7 +52,11 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
     : await fetch(assetUrl,{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
 
   if(!response.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
-  return new Response(await response.arrayBuffer(),{
+  const bytes=Buffer.from(await response.arrayBuffer());
+  const expected=String(row.checksum||'').trim().toLowerCase();
+  const actual=createHash('sha256').update(bytes).digest('hex');
+  if(!/^[a-f0-9]{64}$/.test(expected)||actual!==expected)return NextResponse.json({error:'ARTIFACT_CHECKSUM_MISMATCH',code:'ARTIFACT_CHECKSUM_MISMATCH'},{status:502});
+  return new Response(bytes,{
     status:200,
     headers:{
       'content-type':response.headers.get('content-type')||'application/octet-stream',
