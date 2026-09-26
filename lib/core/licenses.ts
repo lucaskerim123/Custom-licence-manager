@@ -164,7 +164,7 @@ export async function recordInstallationCheckIn(input:{
   const details=input.details&&typeof input.details==='object'?input.details:{};
   const components=(details.components&&typeof details.components==='object')?details.components:{};
   if(!activation){
-    if(input.action!=='deploy') throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
+    if(!['deploy','redeploy'].includes(input.action)) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
     await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,null,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)',[
       input.licenseId,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify({...details,activationPending:true})
     ]);
