@@ -7,7 +7,7 @@ import AuthorityControlGrid from '../components/AuthorityControlGrid';
 
 export const dynamic='force-dynamic';
 
-const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
+const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
 
 async function updateSettings(formData:FormData){
  'use server';
@@ -47,6 +47,7 @@ export default async function Settings(){
   {field:'system_enabled',label:'External authority',help:'Master switch for external License Manager APIs. Turning this off rejects runtime licensing, release and deployment authority requests while leaving this admin panel available.',onText:'External API authority is online',offText:'External API authority is offline',enabled:Boolean(s.system_enabled)},
   {field:'licensing_enabled',label:'License validation & issuance',help:'Controls license issuance and runtime validation. Turning this off makes license checks fail closed and sends a pulse so connected runtimes re-check authority.',onText:'Licensing is accepting validations',offText:'Licensing validations are blocked',enabled:Boolean(s.licensing_enabled)},
   {field:'maintenance_mode',label:'Maintenance enforcement',help:'Makes runtime validation deliberately unavailable while keeping the admin plane accessible. Offline grace remains governed by the runtime policy below.',onText:'Maintenance mode is active',offText:'Normal validation mode',dangerWhen:true,enabled:Boolean(s.maintenance_mode)},
+  {field:'customer_self_unlock_enabled',label:'Customer installation unlock',help:'Allows customers to release their currently bound OrbitFS installation from the Billing Store so the same licence can bind to a reinstall or replacement system. OrbitFS still permits only one bound system at a time.',onText:'Customers can unlock / release their installation',offText:'Only administrators can release installations',enabled:Boolean(s.customer_self_unlock_enabled)},
   {field:'release_system_enabled',label:'Release authority',help:'Controls authoritative release intake, validation and state APIs. Billing Store publication remains a separate final gate.',onText:'Release authority is online',offText:'Release authority is blocked',enabled:Boolean(s.release_system_enabled)},
   {field:'deployment_enabled',label:'Deployment authorization',help:'Master deployment authorization gate. Turning this off blocks Base, Update and rollback authorization while customer deployers remain the execution layer.',onText:'Deployment authorization is online',offText:'All deployment authorization is blocked',enabled:Boolean(s.deployment_enabled)},
   {field:'base_deployment_enabled',label:'Base deployment authorization',help:'Allows customer Base install and redeploy authorization. Billing Store does not own this technical gate.',onText:'Base deployment authorization is online',offText:'Base deployment authorization is blocked',enabled:Boolean(s.base_deployment_enabled)},
