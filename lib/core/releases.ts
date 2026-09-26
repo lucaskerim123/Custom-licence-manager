@@ -176,27 +176,50 @@ async function checkArtifact(row: any) {
   const artifactTag = String(row.manifest?.artifactTag || '').trim();
   if (!repo || !artifactName) return { checks: [{ key: 'artifact_reference', ok: false, message: 'Artifact repository and filename are missing.' }] };
 
-  const headers = new Headers({ accept: 'application/vnd.github+json', 'user-agent': 'OrbitFS-License-Master/2', 'x-github-api-version': '2022-11-28' });
-  const token = String(process.env.GITHUB_RELEASE_TOKEN || process.env.GITHUB_TOKEN || '').trim();
-  if (token) headers.set('authorization', `Bearer ${token}`);
+  const tokens = [...new Set([
+    String(process.env.GITHUB_RELEASE_TOKEN || '').trim(),
+    String(process.env.GITHUB_TOKEN || '').trim(),
+    ''
+  ])];
+
+  const githubFetch = async (url:string, accept:string) => {
+    let lastStatus = 0;
+    for (const token of tokens) {
+      const headers = new Headers({ accept, 'user-agent': 'OrbitFS-License-Master/2', 'x-github-api-version': '2022-11-28' });
+      if (token) headers.set('authorization', `Bearer ${token}`);
+      const response = await fetch(url, { headers, redirect: 'follow', cache: 'no-store' });
+      lastStatus = response.status;
+      if (response.ok) return response;
+      if (![401,403,404].includes(response.status)) return response;
+    }
+    return new Response(null,{status:lastStatus||404});
+  };
 
   try {
     let assetUrl = String(row.artifact_url || '').trim();
-    if (!assetUrl) {
-      if (!artifactTag) return { checks: [{ key: 'artifact_reference', ok: false, message: 'Artifact tag is missing; no artifact URL is required.' }] };
-      const releaseResponse = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(artifactTag)}`, { headers, cache: 'no-store' });
-      if (!releaseResponse.ok) return { checks: [{ key: 'artifact_reachable', ok: false, message: `GitHub release artifact could not be located (HTTP ${releaseResponse.status}).` }] };
-      const release: any = await releaseResponse.json();
-      const asset = Array.isArray(release.assets) ? release.assets.find((item: any) => String(item.name || '') === artifactName) : null;
-      if (!asset?.url) return { checks: [{ key: 'artifact_reachable', ok: false, message: `GitHub release does not contain ${artifactName}.` }] };
-      assetUrl = String(asset.url);
-      headers.set('accept', 'application/octet-stream');
-    } else {
-      headers.set('accept', 'application/octet-stream');
+
+    // Prefer resolving the current release asset from the recorded tag. This avoids
+    // trusting a stale asset URL and proves the artifact still belongs to the
+    // recorded GitHub release.
+    if (artifactTag) {
+      const releaseResponse = await githubFetch(
+        `https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(artifactTag)}`,
+        'application/vnd.github+json'
+      );
+      if (releaseResponse.ok) {
+        const release: any = await releaseResponse.json();
+        const asset = Array.isArray(release.assets) ? release.assets.find((item: any) => String(item.name || '') === artifactName) : null;
+        if (!asset?.url) return { checks: [{ key: 'artifact_reachable', ok: false, message: `GitHub release does not contain ${artifactName}.` }] };
+        assetUrl = String(asset.url);
+      } else if (!assetUrl) {
+        return { checks: [{ key: 'artifact_reachable', ok: false, message: `GitHub release artifact could not be located (HTTP ${releaseResponse.status}). Check License Manager GitHub token Contents access to ${repo}.` }] };
+      }
     }
 
-    const response = await fetch(assetUrl, { headers, redirect: 'follow', cache: 'no-store' });
-    if (!response.ok) return { checks: [{ key: 'artifact_reachable', ok: false, message: `Artifact returned HTTP ${response.status}.` }] };
+    if (!assetUrl) return { checks: [{ key: 'artifact_reference', ok: false, message: 'Artifact tag or URL is missing.' }] };
+
+    const response = await githubFetch(assetUrl, 'application/octet-stream');
+    if (!response.ok) return { checks: [{ key: 'artifact_reachable', ok: false, message: `Artifact returned HTTP ${response.status}. Check License Manager GitHub token Contents access to ${repo}.` }] };
     const length = Number(response.headers.get('content-length') || 0);
     if (length > MAX_ARTIFACT_BYTES) return { checks: [{ key: 'artifact_size', ok: false, message: `Artifact exceeds ${MAX_ARTIFACT_BYTES} bytes.` }] };
     const bytes = Buffer.from(await response.arrayBuffer());
