@@ -345,3 +345,12 @@ details[open]>.managed-record-summary .collapse-chevron{transform:rotate(180deg)
 @media(max-width:520px){
  .grid{grid-template-columns:1fr}.page-title-row{display:block}.header-badge{margin-top:8px}.overview-status-row{align-items:stretch;display:grid}.authority-card-footer{align-items:flex-start;flex-direction:column}.authority-card-footer .state-pill{max-width:100%}.actions{width:100%}.release-controls form,.queue-actions>form{width:100%}.release-controls .button,.queue-actions .button{width:100%}
 }
+
+
+/* License authority editing */
+.license-inline-editor{display:grid;gap:10px;min-width:320px;margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--panel) 88%,#000 12%)}
+.license-inline-editor label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.component-editor{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;border:1px solid var(--line);border-radius:10px;padding:12px}
+.component-editor legend{padding:0 6px;color:var(--muted);font-size:12px}
+.component-editor label{display:flex;align-items:center;gap:8px;color:var(--text)}
+@media (max-width:760px){.license-inline-editor{min-width:0}.component-editor{grid-template-columns:1fr}}
