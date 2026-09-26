@@ -38,18 +38,21 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   }
 
   const github=githubAssetUrl(assetUrl);
-  const response=github
-    ? await fetch('https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId,{
-        headers:{
-          accept:'application/octet-stream',
-          authorization:token?'Bearer '+token:'',
-          'x-github-api-version':'2026-03-10',
-          'user-agent':'OrbitFS-License-Master'
-        },
-        cache:'no-store',
-        redirect:'follow'
-      })
-    : await fetch(assetUrl,{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+  let response:Response;
+  if(github){
+    const apiUrl='https://api.github.com/repos/'+encodeURIComponent(github.owner)+'/'+encodeURIComponent(github.repo)+'/releases/assets/'+github.assetId;
+    const commonHeaders:Record<string,string>={'x-github-api-version':'2022-11-28','user-agent':'OrbitFS-License-Master'};
+    if(token)commonHeaders.authorization='Bearer '+token;
+    const metadata=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/vnd.github+json'},cache:'no-store'});
+    let browserUrl='';
+    if(metadata.ok){try{const value:any=await metadata.json();browserUrl=String(value?.browser_download_url||'').trim();}catch{}}
+    response=await fetch(apiUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+    if(!response.ok&&browserUrl){
+      response=await fetch(browserUrl,{headers:{...commonHeaders,accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+    }
+  }else{
+    response=await fetch(assetUrl,{headers:{accept:'application/octet-stream'},cache:'no-store',redirect:'follow'});
+  }
 
   if(!response.ok)return NextResponse.json({error:'ARTIFACT_DOWNLOAD_FAILED',code:'ARTIFACT_DOWNLOAD_FAILED'},{status:503});
   const bytes=Buffer.from(await response.arrayBuffer());
