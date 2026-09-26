@@ -177,6 +177,7 @@ async function checkArtifact(row: any) {
   if (!repo || !artifactName) return { checks: [{ key: 'artifact_reference', ok: false, message: 'Artifact repository and filename are missing.' }] };
 
   const tokens = [...new Set([
+    String(process.env.ORBITFS_RELEASE_DISPATCH_TOKEN || '').trim(),
     String(process.env.GITHUB_RELEASE_TOKEN || '').trim(),
     String(process.env.GITHUB_TOKEN || '').trim(),
     ''
