@@ -106,6 +106,10 @@
     {
       "version": "20260925000752",
       "name": "repair_release_channel_access_mode_20260925"
+    },
+    {
+      "version": "20260927100944",
+      "name": "fix_release_channel_trigger_search_path_20260927"
     }
   ]
 }
