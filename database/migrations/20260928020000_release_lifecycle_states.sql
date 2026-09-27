@@ -69,28 +69,9 @@ create trigger releases_immutable_published
   before update on public.releases
   for each row execute function prevent_published_release_mutation();
 
--- Only rows explicitly audited as superseded are backfilled.
-update public.releases r
-set status='superseded'
-where r.status='disabled'
-  and exists (
-    select 1
-    from public.audit_events a
-    where a.resource_type='release'
-      and a.resource_id=r.id
-      and a.action='release.superseded'
-  );
-
-update public.releases r
-set status='withdrawn'
-where r.status='disabled'
-  and exists (
-    select 1
-    from public.audit_events a
-    where a.resource_type='release'
-      and a.resource_id=r.id
-      and a.action in ('release.withdraw','release.pause','release.rolled_back','release.reverted')
-  );
+-- Legacy 'disabled' rows are deliberately left untouched during the compatibility rollout.
+-- New code understands disabled as historical/closed. A later post-deploy backfill may
+-- classify audited legacy rows as superseded or withdrawn once compatible code is live.
 
 create or replace view public.release_lifecycle as
 select
