@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../../lib/auth';
 import { db } from '../../../../../../lib/db';
-import { rotateLicense, setInstallationStatus, setLicenseStatus } from '../../../../../../lib/core/licenses';
+import { reactivateTerminatedLicense, rotateLicense, setInstallationStatus, setLicenseStatus, terminateLicense } from '../../../../../../lib/core/licenses';
 
 export async function POST(
   request: Request,
@@ -65,43 +65,38 @@ export async function POST(
     }
 
     if (['unlock', 'customer-unlock', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
-      if (!installationId) {
-        return NextResponse.json({ error: 'installation_id is required for installation control' }, { status: 400 });
+      if (['lock-installation','reactivate-installation','terminate-installation'].includes(action)) {
+        return NextResponse.json({ error: 'Installation blocking was merged into licence suspension. Use suspend for enforcement or unlock-installation to release the binding.', code: 'LEGACY_INSTALLATION_CONTROL_REMOVED' }, { status: 409 });
       }
+      if (!installationId) return NextResponse.json({ error: 'installation_id is required for installation control' }, { status: 400 });
+      if (current.status !== 'active') return NextResponse.json({ error: 'Unlock is unavailable unless the licence is active', code: 'LICENSE_CONTROLS_LOCKED' }, { status: 409 });
       if (action === 'customer-unlock') {
         const settings = (await db().query('select customer_self_unlock_enabled from system_settings where id=true')).rows[0];
         if (!settings?.customer_self_unlock_enabled) return NextResponse.json({ error: 'Customer installation unlock is disabled by License Manager', code: 'CUSTOMER_INSTALLATION_UNLOCK_DISABLED' }, { status: 403 });
       }
-
-      const activation = (
-        await db().query(
-          'select id from activations where license_id=$1 and installation_id=$2 limit 1',
-          [id, installationId],
-        )
-      ).rows[0];
-
+      const activation = (await db().query('select id,status from activations where license_id=$1 and installation_id=$2 limit 1',[id,installationId])).rows[0];
       if (!activation) return NextResponse.json({ error: 'Installation not found for this license' }, { status: 404 });
-
-      const status =
-        action === 'reactivate-installation'
-          ? 'active'
-          : action === 'lock-installation'
-            ? 'locked'
-            : 'terminated';
-
-      const result = await setInstallationStatus(activation.id, status, null, 'external-integration');
-      return NextResponse.json({ ok: true, action, installation: result, message: status === 'terminated' ? 'Installation binding released. The licence can activate on one installation again.' : status === 'locked' ? 'Installation blocked and remains bound to this licence.' : 'Installation reactivated.' });
+      if (activation.status !== 'active') return NextResponse.json({ ok:true, action, installation:activation, message:'Licence is already active and unbound.' });
+      const result = await setInstallationStatus(activation.id, 'released', null, 'external-integration');
+      return NextResponse.json({ ok:true, action, installation:result, message:'Licence unlocked. It is active, unbound and ready to activate on one installation.' });
     }
 
-    const status = action === 'activate' ? 'active' : action === 'suspend' ? 'suspended' : 'revoked';
-    const result = await setLicenseStatus(id, status, null, 'external-integration');
-
-    return NextResponse.json({
-      ok: true,
-      action,
-      license: result,
-      message: action === 'revoke' || action === 'terminate' ? 'License terminated.' : `License ${action} completed.`,
-    });
+    if (action === 'suspend') {
+      const result = await setLicenseStatus(id, 'suspended', null, 'external-integration');
+      return NextResponse.json({ ok:true, action, license:result, message:'Licence suspended. Runtime access and licence controls are locked.' });
+    }
+    if (action === 'terminate' || action === 'revoke') {
+      const result = await terminateLicense(id, null, 'external-integration');
+      return NextResponse.json({ ok:true, action, license:result, message:'Licence terminated. Its previous key is permanently invalid.' });
+    }
+    if (action === 'activate') {
+      if (current.status === 'revoked') {
+        const result = await reactivateTerminatedLicense(id, null, 'external-integration');
+        return NextResponse.json({ ok:true, action, license:result, key:result.key, message:'Terminated licence manually reactivated with a new one-time key. Licence is active and unbound.' });
+      }
+      const result = await setLicenseStatus(id, 'active', null, 'external-integration');
+      return NextResponse.json({ ok:true, action, license:result, message:'Licence active. Existing binding state is preserved.' });
+    }
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'License control failed' },
