@@ -43,6 +43,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   const componentSlug=input.componentSlug||input.productSlug;
   const productFamily=input.productSlug==='orbitfs'?'orbitfs':componentSlug.startsWith('orbitfs_')?'orbitfs':input.productSlug;
   if(productFamily!=='orbitfs')return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
+  if(!input.installationId)return{valid:false,code:'INSTALLATION_ID_REQUIRED' as const,status:400,runtime_policy};
   const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key)]);
   if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
   const license=result.rows[0];
@@ -57,7 +58,6 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
     try{
       await client.query('BEGIN');
       await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(license.id)]);
-      const existing=(await client.query(`select id,status from activations where license_id=$1 and installation_id=$2 limit 1`,[license.id,input.installationId])).rows[0];
       const reserved=(await client.query(`select installation_id,status from activations where license_id=$1 and installation_id<>$2 and status='active' order by last_seen_at desc limit 1`,[license.id,input.installationId])).rows[0];
       if(reserved){
         await client.query('ROLLBACK');
@@ -203,7 +203,7 @@ export async function recordInstallationCheckIn(input:{
     ]);
     return {ok:true,activationId:null,installationId:input.installationId,activationPending:true};
   }
-  if(activation.status!=='active') throw Object.assign(new Error('Installation is locked or terminated'),{code:'INSTALLATION_LOCKED_OR_TERMINATED',status:403});
+  if(activation.status!=='active') throw Object.assign(new Error('Installation binding has been released'),{code:'INSTALLATION_RELEASED',status:403});
   await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)',[
     input.licenseId,activation.id,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify(details)
   ]);
