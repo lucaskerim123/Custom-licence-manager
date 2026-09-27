@@ -38,11 +38,11 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
   }
   if(action==='delete'){
     try{
-      const deleted=(await db().query("delete from releases where id=$1 and status<>'published' returning *",[id])).rows[0];
+      const deleted=(await db().query("delete from releases where id=$1 and status='draft' and published_at is null returning *",[id])).rows[0];
       if(!deleted){
         const current=(await db().query('select id,status from releases where id=$1 limit 1',[id])).rows[0];
         if(!current)return NextResponse.json({error:'RELEASE_NOT_FOUND',code:'RELEASE_NOT_FOUND'},{status:404});
-        return NextResponse.json({error:'CURRENTLY_PUBLISHED_RELEASE_DELETE_FORBIDDEN',code:'CURRENTLY_PUBLISHED_RELEASE_DELETE_FORBIDDEN',status:current.status},{status:409});
+        return NextResponse.json({error:'HISTORICAL_RELEASE_DELETE_FORBIDDEN',code:'HISTORICAL_RELEASE_DELETE_FORBIDDEN',status:current.status},{status:409});
       }
       await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${auth.name}`,id,JSON.stringify({product_id:deleted.product_id,version:deleted.version,channel:deleted.channel,release_type:deleted.release_type,status:deleted.status,review_status:deleted.review_status,created_at:deleted.created_at,published_at:deleted.published_at??null})]);
       return NextResponse.json({deleted:true,id,previous_status:deleted.status});
@@ -64,7 +64,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
     // above by releases.control and is enforced again by publishRelease/promoteRelease.
     if(action==='publish')return NextResponse.json({release:await publishRelease(id,undefined,`api:${auth.name}`)});
     if(action==='withdraw')return NextResponse.json({release:await withdrawRelease(id,undefined,`api:${auth.name}`)});
-    if(action==='disable'||action==='pause'){const row=(await db().query("select * from releases where id=$1 limit 1",[id])).rows[0];if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});const release=(await db().query("update releases set status='disabled' where id=$1 returning *",[id])).rows[0];await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.pause','release',$2,$3)",["api:"+auth.name,id,JSON.stringify({previous_status:row.status})]);return NextResponse.json({release});}
+    if(action==='disable'||action==='pause'){const row=(await db().query("select * from releases where id=$1 limit 1",[id])).rows[0];if(!row)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});const release=row.status==='published'?await withdrawRelease(id,undefined,`api:${auth.name}`):(await db().query("update releases set status='withdrawn' where id=$1 returning *",[id])).rows[0];if(row.status!=='published')await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.withdraw','release',$2,$3)",["api:"+auth.name,id,JSON.stringify({previous_status:row.status,reason:'pause'})]);return NextResponse.json({release});}
     if(action==='archive')return NextResponse.json({release:await archiveRelease(id,true,undefined,`api:${auth.name}`,body.reason?String(body.reason):undefined)});
     if(action==='restore')return NextResponse.json({release:await archiveRelease(id,false,undefined,`api:${auth.name}`)});
     if(action==='promote')return NextResponse.json({release:await promoteRelease(id,String(body.target_channel||body.targetChannel||'').trim().toLowerCase(),undefined,`api:${auth.name}`)});

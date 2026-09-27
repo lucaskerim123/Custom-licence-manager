@@ -348,7 +348,7 @@ export async function createRelease(input:{productId:string;channel:string;versi
  if(existing){
   if(existing.status==='published')throw new Error('Published release already exists for this product, channel, version and type.');
   if(existing.review_status==='rejected')throw new Error('Rejected release is closed. Use a new version instead of creating another attempt.');
-  if(existing.status==='disabled')throw new Error('Disabled release is closed. Restore/archive it explicitly or use a new version.');
+  if(['disabled','superseded','withdrawn'].includes(String(existing.status||'')))throw new Error('Closed release is immutable. Restore/archive it explicitly or use a new version.');
   const attemptHistory=Array.isArray(existing.manifest?.build_attempts)?existing.manifest.build_attempts:[];
   const attemptNumber=attemptHistory.length+1;
   const buildAttempt={
@@ -438,6 +438,15 @@ async function validateUpdateBaseCompatibility(row:any){
 async function validateVersionProgression(row:any){
  const version=String(row.version||'').trim();
  if(!SEMVER.test(version))return {key:'version_progression',ok:false,message:'Release version must be valid SemVer.'};
+ const rollbackFrom=String(row?.manifest?.rollback_from?.release_id||'').trim();
+ if(row.release_type==='base'&&rollbackFrom){
+  const source=(await db().query(
+   "select id,version,release_type,review_status,status,checksum,source_sha,manifest from releases where id=$1 and product_id=$2 and channel=$3 limit 1",
+   [String(row?.manifest?.rollback_source_release_id||row?.manifest?.rollback_from?.source_release_id||''),row.product_id,row.channel]
+  )).rows[0];
+  const sourceValidated=Boolean(source&&source.release_type==='base'&&source.review_status==='approved'&&['superseded','published','disabled'].includes(String(source.status||''))&&source.manifest?.validation?.status==='passed'&&validationIdentityMatches(source));
+  return {key:'version_progression',ok:sourceValidated,message:sourceValidated?`Rollback candidate deliberately restores validated Base ${version}; monotonic version progression is not required.`:'Rollback candidate does not reference a validated historical Base artifact.'};
+ }
  const previous=(await db().query(`
   select r.version
   from releases r
@@ -452,7 +461,7 @@ async function validateVersionProgression(row:any){
  return {key:'version_progression',ok,message:ok?`Version ${version} advances beyond published ${previous.version}.`:`Version ${version} must advance beyond the latest published ${row.release_type} version ${previous.version} in ${row.channel}.`};
 }
 export async function validateRelease(id:string, actorUserId?:string|null, actor?:string){const pool=db();const result=await pool.query(`select r.*,p.slug product,p.name product_name,p.status product_status from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id]);const row=result.rows[0];if(!row)return null;const checks:any[]=[];checks.push({key:'product',ok:row.product_status==='active',message:row.product_status==='active'?'Product is active.':'Product is not active.'});checks.push({key:'version',ok:SEMVER.test(String(row.version||'').trim()),message:SEMVER.test(String(row.version||'').trim())?'Version is valid SemVer.':'Version must be valid SemVer.'});checks.push(await validateVersionProgression(row));const releaseNotes=String(row.notes||row.manifest?.releaseNotes||'').trim();checks.push({key:'changelog',ok:Boolean(releaseNotes),message:Boolean(releaseNotes)?'Generated release changelog is present.':'Release changelog is required before release approval.'});checks.push({key:'source',ok:Boolean(row.source_repo&&row.source_ref&&row.source_sha),message:Boolean(row.source_repo&&row.source_ref&&row.source_sha)?'Source repository, ref and commit are recorded.':'Source repository, ref and commit are required.'});checks.push(await validateSourceIdentity(row));checks.push(await validateUpdateBaseCompatibility(row));const components=canonicalComponents(row.manifest?.components,row.release_type);const componentsOk=row.release_type==='base'?components.length===1&&components[0]==='base':components.length>0&&components.every((x:string)=>ALLOWED_UPDATE_COMPONENTS.has(x));checks.push({key:'components',ok:componentsOk,message:componentsOk?`Release components: ${components.join(', ')}.`:'Release components are missing or invalid.'});const manifestObject=row.manifest&&typeof row.manifest==='object'?row.manifest:{};checks.push({key:'manifest',ok:Object.keys(manifestObject).length>0,message:Object.keys(manifestObject).length>0?'Release manifest is present.':'Release manifest is missing.'});const workflow=await checkWorkflow(row);checks.push(workflow);const artifact=await checkArtifact(row);checks.push(...artifact.checks);const enrichedChecks=enrichValidationChecks(checks);const passed=enrichedChecks.every((x:any)=>x.ok===true);const manifest=validationManifest({...row,manifest:{...(row.manifest||{}),...(artifact.manifestPatch||{}),components}},enrichedChecks,passed?'passed':'failed');const saved=(await pool.query(`update releases set manifest=$2 where id=$1 returning *`,[id,manifest])).rows[0];await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.validate','release',$3,$4)`,[actorUserId??null,actor??'integration-api',id,JSON.stringify({status:passed?'passed':'failed',checks:enrichedChecks})]);return saved;}
-export async function setReleaseReview(id:string,reviewStatus:'approved'|'rejected',actorUserId?:string|null,actor?:string,reason?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');if(reviewStatus==='approved'&&(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row)))throw new Error('Release must pass validation for this exact source/artifact before approval');const result=await pool.query(`update releases set review_status=$2,status=case when $2='rejected' then 'disabled' when status='disabled' then 'draft' else status end where id=$1 returning *`,[id,reviewStatus]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[actorUserId??null,actor??'admin','release.review',id,JSON.stringify({review_status:reviewStatus,reason:reason||null})]);return result.rows[0];}
+export async function setReleaseReview(id:string,reviewStatus:'approved'|'rejected',actorUserId?:string|null,actor?:string,reason?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');if(reviewStatus==='approved'&&(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row)))throw new Error('Release must pass validation for this exact source/artifact before approval');const result=await pool.query(`update releases set review_status=$2,status=case when $2='rejected' then 'draft' when status='disabled' then 'draft' else status end where id=$1 returning *`,[id,reviewStatus]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[actorUserId??null,actor??'admin','release.review',id,JSON.stringify({review_status:reviewStatus,reason:reason||null})]);return result.rows[0];}
 export async function publishRelease(id:string,actorUserId?:string|null,actor?:string){
  const pool=db();
  const settings=(await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];
@@ -464,21 +473,30 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
   if(!row){await client.query('ROLLBACK');return null;}
   const channel=await requireReleaseChannel(row.channel);
   if(!channel.customer_visible)throw new Error('Release channel is not customer-visible and cannot be published.');
+  if(row.status!=='draft'||row.archived_at)throw new Error('Only an active draft release can be published. Superseded, withdrawn and archived history is immutable.');
   if(row.review_status!=='approved')throw new Error('Release must be approved before publication');
   if(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Release must pass validation for this exact source/artifact before publication');
 
   let superseded:any[]=[];
+  let immediatePrevious:any=null;
   if(row.release_type==='base'){
    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(row.product_id)+':'+String(row.channel)+':base']);
-   superseded=(await client.query(
-    "update releases set status='disabled' where product_id=$1 and channel=$2 and release_type='base' and status='published' and id<>$3 returning id,version,published_at",
+   const currentlyPublished=(await client.query(
+    "select id,version,published_at from releases where product_id=$1 and channel=$2 and release_type='base' and status='published' and id<>$3 order by published_at desc nulls last,created_at desc for update",
     [row.product_id,row.channel,id]
    )).rows;
+   immediatePrevious=currentlyPublished[0]||null;
+   if(currentlyPublished.length){
+    superseded=(await client.query(
+     "update releases set status='superseded' where id = any($1::uuid[]) returning id,version,published_at",
+     [currentlyPublished.map((item:any)=>item.id)]
+    )).rows;
+   }
   }
 
   const result=await client.query(
-   "update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued' where id=$1 and review_status='approved' returning *",
-   [id]
+   "update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued',supersedes_release_id=coalesce(supersedes_release_id,$2::uuid) where id=$1 and review_status='approved' returning *",
+   [id,immediatePrevious?.id??null]
   );
   const published=result.rows[0];
   if(!published){await client.query('ROLLBACK');return null;}
@@ -551,7 +569,7 @@ export async function withdrawRelease(id:string,actorUserId?:string|null,actor?:
  const row=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];
  if(!row)return null;
  if(row.status!=='published')throw new Error('Only a published release can be withdrawn.');
- const result=await pool.query("update releases set status='disabled' where id=$1 and status='published' returning *",[id]);
+ const result=await pool.query("update releases set status='withdrawn' where id=$1 and status='published' returning *",[id]);
  if(!result.rows[0])throw new Error('Release could not be withdrawn.');
  await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.withdraw','release',$3,$4)",[actorUserId??null,actor??'admin',id,JSON.stringify({version:row.version,channel:row.channel,release_type:row.release_type})]);
  return result.rows[0];
@@ -563,10 +581,13 @@ export async function rollbackBaseRelease(id:string,actorUserId?:string|null,act
  if(!current)return null;
  if(current.release_type!=='base')throw new Error('Rollback is currently available for Base deployments only.');
  if(current.status!=='published')throw new Error('Only a published Base deployment can be rolled back.');
- const previous=(await pool.query("select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.product_id=$1 and r.channel=$2 and r.release_type='base' and r.status='published' and r.id<>$3 and r.published_at < $4 order by r.published_at desc nulls last,r.created_at desc limit 1",[current.product_id,current.channel,id,current.published_at])).rows[0];
- if(!previous)throw new Error('No previous published Base deployment is available for rollback.');
+ const previous=(await pool.query(
+  "select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.product_id=$1 and r.channel=$2 and r.release_type='base' and r.status in ('superseded','published','disabled') and r.review_status='approved' and r.id<>$3 and r.published_at < $4 order by r.published_at desc nulls last,r.created_at desc limit 1",
+  [current.product_id,current.channel,id,current.published_at]
+ )).rows[0];
+ if(!previous||previous.manifest?.validation?.status!=='passed'||!validationIdentityMatches(previous))throw new Error('No previous validated Base deployment is available for rollback.');
  const revision=Number((await pool.query('select coalesce(max(revision),0)::int revision from releases where product_id=$1 and channel=$2 and version=$3 and release_type=\'base\'',[previous.product_id,previous.channel,previous.version])).rows[0].revision||0)+1;
- const manifest={...(previous.manifest||{}),rollback_from:{release_id:current.id,version:current.version,created_at:new Date().toISOString()}};
+ const manifest={...(previous.manifest||{}),rollback_from:{release_id:current.id,version:current.version,source_release_id:previous.id,created_at:new Date().toISOString()},rollback_source_release_id:previous.id};
  const result=await pool.query("insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,'base',$4,$5,$6,$7,$8,'draft',null,'pending','not_started',$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) returning *",[previous.product_id,previous.channel,previous.version,previous.source_repo,previous.source_ref,previous.artifact_url,previous.checksum,previous.notes,previous.source_sha,previous.artifact_name,previous.artifact_repo,previous.artifact_run_id,previous.vercel_ready,previous.supabase_ready,previous.customer_publication_repo,manifest,revision,current.id]);
  const row=result.rows[0];
  await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.rollback.prepare','release',$3,$4)",[actorUserId??null,actor??'admin',row.id,JSON.stringify({from_release_id:current.id,from_version:current.version,to_version:row.version,source_release_id:previous.id})]);
@@ -579,7 +600,8 @@ export async function markReleaseRolledBack(id:string,reason:string,actorUserId?
  const pool=db();const row=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];if(!row)return null;
  const why=String(reason||'').trim();if(!why)throw new Error('Rollback/revert reason is required.');
  const now=new Date();const manifest={...(row.manifest||{}),lifecycle:{...(row.manifest?.lifecycle||{}),state:kind==='revert'?'reverted':'rolled_back',reason:why,at:now.toISOString(),actor:actor??'dev-panel'}};
- const result=(await pool.query("update releases set status='disabled',archived_at=$2,archived_by=$3,manifest=$4 where id=$1 returning *",[id,now,actorUserId??null,manifest])).rows[0];
+ if(row.status==='published')await pool.query("update releases set status='withdrawn' where id=$1 and status='published'",[id]);
+ const result=(await pool.query("update releases set status='withdrawn',archived_at=$2,archived_by=$3,manifest=$4 where id=$1 returning *",[id,now,actorUserId??null,manifest])).rows[0];
  await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)",[actorUserId??null,actor??'dev-panel',kind==='revert'?'release.reverted':'release.rolled_back',id,JSON.stringify({version:row.version,release_type:row.release_type,previous_status:row.status,reason:why})]);
  return result??null;
 }
