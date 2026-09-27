@@ -44,7 +44,7 @@ create table if not exists licenses (
 );
 create table if not exists activations (
   id uuid primary key default gen_random_uuid(), license_id uuid not null references licenses(id) on delete cascade, installation_id text not null,
-  product_version text, status text not null default 'active' check(status in ('active','locked','terminated')), last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb,
+  product_version text, status text not null default 'active' check(status in ('active','released')), last_seen_at timestamptz not null default now(), metadata jsonb not null default '{}'::jsonb,
   first_seen_at timestamptz not null default now(), last_ip text, last_user_agent text, last_hostname text, last_platform text, last_architecture text,
   last_client text, last_client_version text, last_provider text, last_region text, last_deployment_id text, last_deployment_url text,
   last_deployment_status text, last_operation text, deployment_count integer not null default 0, current_components jsonb not null default '{}'::jsonb,
