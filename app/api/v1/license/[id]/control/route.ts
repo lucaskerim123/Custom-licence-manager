@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { integrationAuthorized } from '../../../../../../lib/auth';
 import { db } from '../../../../../../lib/db';
 import { reactivateTerminatedLicense, rotateLicense, setInstallationStatus, setLicenseStatus, terminateLicense } from '../../../../../../lib/core/licenses';
+import { sendPulse } from '../../../../../../lib/core/settings';
 
 export async function POST(
   request: Request,
@@ -15,7 +16,7 @@ export async function POST(
   const action = String(body?.action || '').trim().toLowerCase();
   const installationId = String(body?.installation_id || body?.installationId || '').trim();
 
-  if (!['rotate', 'unlock', 'customer-unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-components', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
+  if (!['rotate', 'unlock', 'customer-unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-component', 'set-components', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
     return NextResponse.json({ error: 'Unsupported license control action' }, { status: 400 });
   }
 
@@ -43,6 +44,51 @@ export async function POST(
       });
     }
 
+    if (action === 'set-component') {
+      if (current.product !== 'orbitfs_base') {
+        return NextResponse.json({ error: 'Components can only be attached to an OrbitFS Base license' }, { status: 400 });
+      }
+      const component = String(body?.component || body?.component_key || body?.componentKey || '').trim().toLowerCase();
+      const allowed = new Set(['orbitfs_apex', 'orbitfs_mcp', 'orbitfs_studio']);
+      if (!allowed.has(component)) {
+        return NextResponse.json({ error: 'Unsupported OrbitFS add-on component', code: 'COMPONENT_NOT_SUPPORTED' }, { status: 400 });
+      }
+      if (typeof body?.enabled !== 'boolean') {
+        return NextResponse.json({ error: 'enabled must be true or false', code: 'COMPONENT_STATE_REQUIRED' }, { status: 400 });
+      }
+      const expired = Boolean(current.expires_at && new Date(current.expires_at).getTime() <= Date.now());
+      if (body.enabled && (current.status !== 'active' || expired)) {
+        return NextResponse.json({ error: 'Add-ons can only be activated while the Base licence is active', code: expired ? 'LICENSE_EXPIRED' : 'LICENSE_NOT_ACTIVE' }, { status: 409 });
+      }
+      const existingPolicy = current.metadata && typeof current.metadata === 'object' && current.metadata.license_policy && typeof current.metadata.license_policy === 'object' ? current.metadata.license_policy : {};
+      const existingComponents = existingPolicy.components && typeof existingPolicy.components === 'object' ? existingPolicy.components : {};
+      const components: Record<string, boolean> = {
+        orbitfs_base: true,
+        orbitfs_apex: Boolean(existingComponents.orbitfs_apex),
+        orbitfs_mcp: Boolean(existingComponents.orbitfs_mcp),
+        orbitfs_studio: Boolean(existingComponents.orbitfs_studio),
+      };
+      components[component] = body.enabled;
+      const metadata = { ...(current.metadata || {}), license_policy: { ...existingPolicy, components } };
+      const updated = (await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0];
+      await db().query(
+        `insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'license.component','license',$2,$3)`,
+        [`api:${auth.name}`, id, JSON.stringify({ component, enabled: body.enabled, components, binding_preserved: true })],
+      );
+      const pulse = await sendPulse(null, `api:${auth.name}`, 'license-component-changed', { license_id: id, component, enabled: body.enabled, binding_preserved: true });
+      return NextResponse.json({
+        ok: true,
+        action,
+        license: updated,
+        components,
+        binding_preserved: true,
+        pulse,
+        message: body.enabled
+          ? 'Add-on activated. The existing Base installation binding remains locked to its current installation.'
+          : 'Add-on deactivated. The existing Base installation binding is unchanged.',
+      });
+    }
+
     if (action === 'set-components') {
       if (current.product !== 'orbitfs_base') {
         return NextResponse.json({ error: 'Components can only be attached to an OrbitFS Base license' }, { status: 400 });
@@ -61,7 +107,8 @@ export async function POST(
         `insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'license.components','license',$2,$3)`,
         [`api:${auth.name}`, id, JSON.stringify({ components })],
       );
-      return NextResponse.json({ ok: true, action, license: updated, components });
+      const pulse = await sendPulse(null, `api:${auth.name}`, 'license-components-changed', { license_id: id, components, binding_preserved: true });
+      return NextResponse.json({ ok: true, action, license: updated, components, binding_preserved: true, pulse });
     }
 
     if (['unlock', 'customer-unlock', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
