@@ -453,7 +453,53 @@ async function validateVersionProgression(row:any){
 }
 export async function validateRelease(id:string, actorUserId?:string|null, actor?:string){const pool=db();const result=await pool.query(`select r.*,p.slug product,p.name product_name,p.status product_status from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id]);const row=result.rows[0];if(!row)return null;const checks:any[]=[];checks.push({key:'product',ok:row.product_status==='active',message:row.product_status==='active'?'Product is active.':'Product is not active.'});checks.push({key:'version',ok:SEMVER.test(String(row.version||'').trim()),message:SEMVER.test(String(row.version||'').trim())?'Version is valid SemVer.':'Version must be valid SemVer.'});checks.push(await validateVersionProgression(row));const releaseNotes=String(row.notes||row.manifest?.releaseNotes||'').trim();checks.push({key:'changelog',ok:Boolean(releaseNotes),message:Boolean(releaseNotes)?'Generated release changelog is present.':'Release changelog is required before release approval.'});checks.push({key:'source',ok:Boolean(row.source_repo&&row.source_ref&&row.source_sha),message:Boolean(row.source_repo&&row.source_ref&&row.source_sha)?'Source repository, ref and commit are recorded.':'Source repository, ref and commit are required.'});checks.push(await validateSourceIdentity(row));checks.push(await validateUpdateBaseCompatibility(row));const components=canonicalComponents(row.manifest?.components,row.release_type);const componentsOk=row.release_type==='base'?components.length===1&&components[0]==='base':components.length>0&&components.every((x:string)=>ALLOWED_UPDATE_COMPONENTS.has(x));checks.push({key:'components',ok:componentsOk,message:componentsOk?`Release components: ${components.join(', ')}.`:'Release components are missing or invalid.'});const manifestObject=row.manifest&&typeof row.manifest==='object'?row.manifest:{};checks.push({key:'manifest',ok:Object.keys(manifestObject).length>0,message:Object.keys(manifestObject).length>0?'Release manifest is present.':'Release manifest is missing.'});const workflow=await checkWorkflow(row);checks.push(workflow);const artifact=await checkArtifact(row);checks.push(...artifact.checks);const enrichedChecks=enrichValidationChecks(checks);const passed=enrichedChecks.every((x:any)=>x.ok===true);const manifest=validationManifest({...row,manifest:{...(row.manifest||{}),...(artifact.manifestPatch||{}),components}},enrichedChecks,passed?'passed':'failed');const saved=(await pool.query(`update releases set manifest=$2 where id=$1 returning *`,[id,manifest])).rows[0];await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.validate','release',$3,$4)`,[actorUserId??null,actor??'integration-api',id,JSON.stringify({status:passed?'passed':'failed',checks:enrichedChecks})]);return saved;}
 export async function setReleaseReview(id:string,reviewStatus:'approved'|'rejected',actorUserId?:string|null,actor?:string,reason?:string){const pool=db();const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;if(row.status==='published')throw new Error('Published releases are immutable; create a new revision for changes.');if(reviewStatus==='approved'&&(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row)))throw new Error('Release must pass validation for this exact source/artifact before approval');const result=await pool.query(`update releases set review_status=$2,status=case when $2='rejected' then 'disabled' when status='disabled' then 'draft' else status end where id=$1 returning *`,[id,reviewStatus]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[actorUserId??null,actor??'admin','release.review',id,JSON.stringify({review_status:reviewStatus,reason:reason||null})]);return result.rows[0];}
-export async function publishRelease(id:string,actorUserId?:string|null,actor?:string){const pool=db();const settings=(await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];if(!settings?.system_enabled||!settings.release_system_enabled||!settings.deployment_enabled)throw new Error('Release/deployment system is offline');const row=(await pool.query(`select * from releases where id=$1`,[id])).rows[0];if(!row)return null;const channel=await requireReleaseChannel(row.channel);if(!channel.customer_visible)throw new Error('Release channel is not customer-visible and cannot be published.');if(row.review_status!=='approved')throw new Error('Release must be approved before publication');if(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Release must pass validation for this exact source/artifact before publication');const result=await pool.query(`update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued' where id=$1 and review_status='approved' returning *`,[id]);if(!result.rows[0])return null;await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.publish','release',$3,$4)`,[actorUserId??null,actor??'admin',id,JSON.stringify({deployment_status:'queued'})]);return result.rows[0];}
+export async function publishRelease(id:string,actorUserId?:string|null,actor?:string){
+ const pool=db();
+ const settings=(await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];
+ if(!settings?.system_enabled||!settings.release_system_enabled||!settings.deployment_enabled)throw new Error('Release/deployment system is offline');
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const row=(await client.query('select * from releases where id=$1 for update',[id])).rows[0];
+  if(!row){await client.query('ROLLBACK');return null;}
+  const channel=await requireReleaseChannel(row.channel);
+  if(!channel.customer_visible)throw new Error('Release channel is not customer-visible and cannot be published.');
+  if(row.review_status!=='approved')throw new Error('Release must be approved before publication');
+  if(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Release must pass validation for this exact source/artifact before publication');
+
+  let superseded:any[]=[];
+  if(row.release_type==='base'){
+   await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(row.product_id)+':'+String(row.channel)+':base']);
+   superseded=(await client.query(
+    "update releases set status='disabled' where product_id=$1 and channel=$2 and release_type='base' and status='published' and id<>$3 returning id,version,published_at",
+    [row.product_id,row.channel,id]
+   )).rows;
+  }
+
+  const result=await client.query(
+   "update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued' where id=$1 and review_status='approved' returning *",
+   [id]
+  );
+  const published=result.rows[0];
+  if(!published){await client.query('ROLLBACK');return null;}
+
+  for(const previous of superseded){
+   await client.query(
+    "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.superseded','release',$3,$4)",
+    [actorUserId??null,actor??'admin',previous.id,JSON.stringify({superseded_by:id,version:previous.version,channel:row.channel,release_type:'base'})]
+   );
+  }
+  await client.query(
+   "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.publish','release',$3,$4)",
+   [actorUserId??null,actor??'admin',id,JSON.stringify({deployment_status:'queued',superseded_release_ids:superseded.map((x:any)=>x.id)})]
+  );
+  await client.query('COMMIT');
+  return published;
+ }catch(error){
+  try{await client.query('ROLLBACK')}catch{}
+  throw error;
+ }finally{client.release();}
+}
 export async function promoteRelease(id:string,targetChannel:string,actorUserId?:string|null,actor?:string){
  const pool=db();
  const source=(await pool.query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[id])).rows[0];
