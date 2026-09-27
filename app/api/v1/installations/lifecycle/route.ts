@@ -40,9 +40,9 @@ export async function POST(request:Request){
     error:body?.error||null,
   };
 
-  if(phase==='completed'&&action==='uninstall'&&releaseLicense&&activation&&activation.status!=='terminated'){
-    await setInstallationStatus(activation.id,'terminated',null,'orbitfs-lifecycle');
-    details.activationStatus='terminated';
+  if(phase==='completed'&&action==='uninstall'&&releaseLicense&&activation&&activation.status!=='released'){
+    await setInstallationStatus(activation.id,'released',null,'orbitfs-lifecycle');
+    details.activationStatus='released';
   }
 
   await db().query(
