@@ -32,8 +32,11 @@ async function ensureChannelAccessSchema(){
         reviewed_at timestamptz,
         reviewed_by text,
         reason text,
+        request_details jsonb not null default '{}'::jsonb,
         unique(license_id,channel,status)
       );
+      alter table public.release_channel_access_requests
+        add column if not exists request_details jsonb not null default '{}'::jsonb;
 
       create index if not exists release_channel_access_license_idx
         on public.release_channel_access(license_id,channel);
@@ -111,6 +114,14 @@ export async function POST(request: Request) {
   const licenseId = String(body.license_id || body.licenseId || '').trim();
   const channel = String(body.channel || '').trim().toLowerCase();
   const externalReference = body.external_reference ?? body.externalReference ?? null;
+  const rawRequestDetails = body.request_details ?? body.requestDetails ?? {};
+  const requestDetails = rawRequestDetails && typeof rawRequestDetails === 'object' && !Array.isArray(rawRequestDetails)
+    ? {
+        use_case: String(rawRequestDetails.use_case ?? rawRequestDetails.useCase ?? '').trim().slice(0, 500),
+        environment: String(rawRequestDetails.environment ?? '').trim().slice(0, 80),
+        notes: String(rawRequestDetails.notes ?? '').trim().slice(0, 500),
+      }
+    : {};
 
   if (!licenseId) return NextResponse.json({ error: 'LICENSE_REQUIRED', code:'LICENSE_REQUIRED' }, { status: 400 });
 
@@ -149,10 +160,12 @@ export async function POST(request: Request) {
       [licenseId, channel, 'pending'],
     )).rows[0];
     if (existing) return NextResponse.json({ request: existing, existing: true });
+    if (!requestDetails.use_case) return NextResponse.json({ error: 'REQUEST_USE_CASE_REQUIRED', code:'REQUEST_USE_CASE_REQUIRED' }, { status: 400 });
+    if (!requestDetails.environment) return NextResponse.json({ error: 'REQUEST_ENVIRONMENT_REQUIRED', code:'REQUEST_ENVIRONMENT_REQUIRED' }, { status: 400 });
     const row = (await db().query(
-      `insert into release_channel_access_requests(license_id,channel,external_reference,status)
-       values($1,$2,$3,'pending') returning *`,
-      [licenseId, channel, externalReference],
+      `insert into release_channel_access_requests(license_id,channel,external_reference,status,request_details)
+       values($1,$2,$3,'pending',$4::jsonb) returning *`,
+      [licenseId, channel, externalReference, JSON.stringify(requestDetails)],
     )).rows[0];
     return NextResponse.json({ request: row }, { status: 201 });
   }
