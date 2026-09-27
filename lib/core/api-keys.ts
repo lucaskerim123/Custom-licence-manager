@@ -74,7 +74,7 @@ export async function authenticateApiKey(request: Request, requiredScope?: ApiSc
   // Keep explicitly configured machine tokens compatible with the same API
   // contract. This is a fallback only; UI-created API keys remain authoritative.
   if (envMachineKey(key)) {
-    const controlToken = [process.env.MASTER_API_TOKEN, process.env.INTEGRATION_API_TOKEN].filter(Boolean).some(candidate => candidate?.trim() === key);
+    const controlToken = [process.env.BILLING_API_TOKEN, process.env.MASTER_API_TOKEN, process.env.INTEGRATION_API_TOKEN].filter(Boolean).some(candidate => candidate?.trim() === key);
     const scopes: ApiScope[] = ['license.issue', 'license.validate', 'license.manage', 'releases.read', 'releases.write', ...(controlToken ? ['releases.control' as ApiScope] : []), 'deployment.read', 'deployment.write'];
     if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
     return { name: controlToken ? 'control-machine-token' : 'environment-machine-token', scopes };
