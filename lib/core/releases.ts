@@ -473,6 +473,7 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
   if(!row){await client.query('ROLLBACK');return null;}
   const channel=await requireReleaseChannel(row.channel);
   if(!channel.customer_visible)throw new Error('Release channel is not customer-visible and cannot be published.');
+  if(row.status!=='draft'||row.archived_at)throw new Error('Only an active draft release can be published. Superseded, withdrawn and archived history is immutable.');
   if(row.review_status!=='approved')throw new Error('Release must be approved before publication');
   if(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Release must pass validation for this exact source/artifact before publication');
 
@@ -599,6 +600,7 @@ export async function markReleaseRolledBack(id:string,reason:string,actorUserId?
  const pool=db();const row=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];if(!row)return null;
  const why=String(reason||'').trim();if(!why)throw new Error('Rollback/revert reason is required.');
  const now=new Date();const manifest={...(row.manifest||{}),lifecycle:{...(row.manifest?.lifecycle||{}),state:kind==='revert'?'reverted':'rolled_back',reason:why,at:now.toISOString(),actor:actor??'dev-panel'}};
+ if(row.status==='published')await pool.query("update releases set status='withdrawn' where id=$1 and status='published'",[id]);
  const result=(await pool.query("update releases set status='withdrawn',archived_at=$2,archived_by=$3,manifest=$4 where id=$1 returning *",[id,now,actorUserId??null,manifest])).rows[0];
  await pool.query("insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)",[actorUserId??null,actor??'dev-panel',kind==='revert'?'release.reverted':'release.rolled_back',id,JSON.stringify({version:row.version,release_type:row.release_type,previous_status:row.status,reason:why})]);
  return result??null;
