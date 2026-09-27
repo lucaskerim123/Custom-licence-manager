@@ -115,13 +115,14 @@ export async function POST(request: Request) {
   const channel = String(body.channel || '').trim().toLowerCase();
   const externalReference = body.external_reference ?? body.externalReference ?? null;
   const rawRequestDetails = body.request_details ?? body.requestDetails ?? {};
-  const requestDetails = rawRequestDetails && typeof rawRequestDetails === 'object' && !Array.isArray(rawRequestDetails)
-    ? {
-        use_case: String(rawRequestDetails.use_case ?? rawRequestDetails.useCase ?? '').trim().slice(0, 500),
-        environment: String(rawRequestDetails.environment ?? '').trim().slice(0, 80),
-        notes: String(rawRequestDetails.notes ?? '').trim().slice(0, 500),
-      }
-    : {};
+  const requestDetails:{use_case:string;environment:string;notes:string} =
+    rawRequestDetails && typeof rawRequestDetails === 'object' && !Array.isArray(rawRequestDetails)
+      ? {
+          use_case: String(rawRequestDetails.use_case ?? rawRequestDetails.useCase ?? '').trim().slice(0, 500),
+          environment: String(rawRequestDetails.environment ?? '').trim().slice(0, 80),
+          notes: String(rawRequestDetails.notes ?? '').trim().slice(0, 500),
+        }
+      : {use_case:'',environment:'',notes:''};
 
   if (!licenseId) return NextResponse.json({ error: 'LICENSE_REQUIRED', code:'LICENSE_REQUIRED' }, { status: 400 });
 
