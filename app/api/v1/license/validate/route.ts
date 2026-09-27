@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         licenseId: String(result.license_id),
         installationId,
         action:
-          ['deploy', 'update', 'redeploy', 'rollback', 'check_in'].includes(
+          ['deploy', 'base_update', 'update', 'redeploy', 'rollback', 'check_in'].includes(
             String(body?.deployment_action || body?.action_name || 'check_in').toLowerCase(),
           )
             ? (String(body?.deployment_action || body?.action_name || 'check_in').toLowerCase() as any)
