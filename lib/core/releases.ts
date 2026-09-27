@@ -148,7 +148,20 @@ async function scanPackage(row:any,bytes:Buffer){
       }
       const migrationCount=Number(pkg.databaseMigrationCount??pkg.releaseInfo?.databaseMigrationCount??0);
       const latestMigration=String(pkg.databaseLatestMigration||pkg.releaseInfo?.databaseLatestMigration||'').trim();
-      const databaseSnapshotOk=Boolean(schemaPayloadOk&&packageSchemaHash&&releaseSchemaHash&&actualSchemaHash===packageSchemaHash&&packageSchemaHash===releaseSchemaHash&&Number.isInteger(migrationCount)&&migrationCount>0&&/^\d{14}$/.test(latestMigration));
+      const releaseMigrationCount=Number(row.manifest?.databaseMigrationCount??row.manifest?.releaseInfo?.databaseMigrationCount??0);
+      const releaseLatestMigration=String(row.manifest?.databaseLatestMigration||row.manifest?.releaseInfo?.databaseLatestMigration||'').trim();
+      const databaseSnapshotOk=Boolean(
+        schemaPayloadOk
+        &&packageSchemaHash
+        &&releaseSchemaHash
+        &&actualSchemaHash===packageSchemaHash
+        &&packageSchemaHash===releaseSchemaHash
+        &&Number.isInteger(migrationCount)
+        &&migrationCount>0
+        &&migrationCount===releaseMigrationCount
+        &&/^\d{14}$/.test(latestMigration)
+        &&latestMigration===releaseLatestMigration
+      );
       const recordManifest=row.manifest&&typeof row.manifest==='object'?row.manifest:{};
       const packageComponents=canonicalComponents(pkg.components,'base');
       const recordComponents=canonicalComponents(recordManifest.components,'base');
