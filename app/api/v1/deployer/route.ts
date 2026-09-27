@@ -19,8 +19,23 @@ export async function POST(request:Request){
   if(!releaseId)return NextResponse.json({ok:false,code:'RELEASE_ID_REQUIRED'},{status:400});
   if(!['deploy','update','redeploy','rollback'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_DEPLOYMENT_ACTION'},{status:400});
   if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({ok:false,code:'INVALID_DEPLOYMENT_PHASE'},{status:400});
-  const settings=(await db().query('select system_enabled,licensing_enabled,maintenance_mode,deployment_enabled from system_settings where id=true')).rows[0];
-  if(!settings?.system_enabled||!settings?.licensing_enabled||settings?.maintenance_mode||!settings?.deployment_enabled)return NextResponse.json({ok:false,code:'AUTHORITY_UNAVAILABLE',authority:{system_enabled:Boolean(settings?.system_enabled),licensing_enabled:Boolean(settings?.licensing_enabled),maintenance_mode:Boolean(settings?.maintenance_mode),deployment_enabled:Boolean(settings?.deployment_enabled)}},{status:503});
+  const settings=(await db().query('select system_enabled,licensing_enabled,maintenance_mode,release_system_enabled,deployment_enabled,base_deployment_enabled,update_deployment_enabled,rollback_enabled from system_settings where id=true')).rows[0];
+  const authority={
+    system_enabled:Boolean(settings?.system_enabled),
+    licensing_enabled:Boolean(settings?.licensing_enabled),
+    maintenance_mode:Boolean(settings?.maintenance_mode),
+    release_system_enabled:Boolean(settings?.release_system_enabled),
+    deployment_enabled:Boolean(settings?.deployment_enabled),
+    base_deployment_enabled:settings?.base_deployment_enabled!==false,
+    update_deployment_enabled:settings?.update_deployment_enabled!==false,
+    rollback_enabled:settings?.rollback_enabled!==false,
+  };
+  if(!authority.system_enabled||!authority.licensing_enabled||authority.maintenance_mode)return NextResponse.json({ok:false,code:'AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if(!authority.release_system_enabled)return NextResponse.json({ok:false,code:'RELEASE_AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if(!authority.deployment_enabled)return NextResponse.json({ok:false,code:'DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if((action==='deploy'||action==='redeploy')&&!authority.base_deployment_enabled)return NextResponse.json({ok:false,code:'BASE_DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if(action==='update'&&!authority.update_deployment_enabled)return NextResponse.json({ok:false,code:'UPDATE_DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if(action==='rollback'&&!authority.rollback_enabled)return NextResponse.json({ok:false,code:'ROLLBACK_AUTHORITY_UNAVAILABLE',authority},{status:503});
   const release=(await db().query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0];
   if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
   if(updateRollback){
