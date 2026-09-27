@@ -4,6 +4,8 @@ import {db} from '../../../../lib/db';
 import {recordInstallationCheckIn} from '../../../../lib/core/licenses';
 
 function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
+const SEMVER=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
+function compareSemver(a:any,b:any){const x=String(a||'').match(SEMVER),y=String(b||'').match(SEMVER);if(!x||!y)return null;return Number(x[1])-Number(y[1])||Number(x[2])-Number(y[2])||Number(x[3])-Number(y[3]);}
 
 export async function POST(request:Request){
   const actor=await integrationAuthorized(request,'deployment.write');
@@ -17,7 +19,7 @@ export async function POST(request:Request){
   const updateRollback=action==='rollback'&&rollbackScope==='update';
   if(phase==='sync')return NextResponse.json({ok:false,code:'CUSTOMER_DEPLOYER_EXECUTION_REQUIRED',error:'Provider status checks are executed by the customer deployer; License Manager does not accept customer provider credentials.'},{status:409});
   if(!releaseId)return NextResponse.json({ok:false,code:'RELEASE_ID_REQUIRED'},{status:400});
-  if(!['deploy','update','redeploy','rollback'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_DEPLOYMENT_ACTION'},{status:400});
+  if(!['deploy','base_update','update','redeploy','rollback'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_DEPLOYMENT_ACTION'},{status:400});
   if(!['authorize','completed','failed'].includes(phase))return NextResponse.json({ok:false,code:'INVALID_DEPLOYMENT_PHASE'},{status:400});
   const settings=(await db().query('select system_enabled,licensing_enabled,maintenance_mode,release_system_enabled,deployment_enabled,base_deployment_enabled,update_deployment_enabled,rollback_enabled from system_settings where id=true')).rows[0];
   const authority={
@@ -33,16 +35,11 @@ export async function POST(request:Request){
   if(!authority.system_enabled||!authority.licensing_enabled||authority.maintenance_mode)return NextResponse.json({ok:false,code:'AUTHORITY_UNAVAILABLE',authority},{status:503});
   if(!authority.release_system_enabled)return NextResponse.json({ok:false,code:'RELEASE_AUTHORITY_UNAVAILABLE',authority},{status:503});
   if(!authority.deployment_enabled)return NextResponse.json({ok:false,code:'DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
-  if((action==='deploy'||action==='redeploy')&&!authority.base_deployment_enabled)return NextResponse.json({ok:false,code:'BASE_DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
+  if((action==='deploy'||action==='base_update'||action==='redeploy')&&!authority.base_deployment_enabled)return NextResponse.json({ok:false,code:'BASE_DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
   if(action==='update'&&!authority.update_deployment_enabled)return NextResponse.json({ok:false,code:'UPDATE_DEPLOYMENT_AUTHORITY_UNAVAILABLE',authority},{status:503});
   if(action==='rollback'&&!authority.rollback_enabled)return NextResponse.json({ok:false,code:'ROLLBACK_AUTHORITY_UNAVAILABLE',authority},{status:503});
   const release=(await db().query(`select r.*,p.slug product from releases r join products p on p.id=r.product_id where r.id=$1 limit 1`,[releaseId])).rows[0];
   if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
-  if(updateRollback){
-    if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
-  }else if(release.status!=='published'||release.review_status!=='approved'||release.archived_at){
-    return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
-  }
   const expectedReleaseType=action==='update'||updateRollback?'update':'base';
   if(String(release.release_type)!==expectedReleaseType)return NextResponse.json({ok:false,code:'RELEASE_TYPE_ACTION_MISMATCH'},{status:409});
   const requestedChannel=String(body?.channel||body?.releaseChannel||body?.release_channel||'').trim().toLowerCase();
@@ -52,13 +49,49 @@ export async function POST(request:Request){
   if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED'},{status:403});
   const license=(await db().query(`select id,status,expires_at from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
   if(!license||license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now()))return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE'},{status:403});
+
+  let activation:any=null;
+  let currentBase:any=null;
   if(installationId){
-    const activation=(await db().query('select status from activations where license_id=$1 and installation_id=$2 limit 1',[licenseId,installationId])).rows[0];
+    activation=(await db().query('select id,status,product_version,last_deployment_id,last_deployment_url from activations where license_id=$1 and installation_id=$2 limit 1',[licenseId,installationId])).rows[0];
     if(activation&&activation.status!=='active')return NextResponse.json({ok:false,code:'INSTALLATION_LOCKED_OR_TERMINATED'},{status:403});
-    if(!activation&&!['deploy','redeploy'].includes(action))return NextResponse.json({ok:false,code:'INSTALLATION_NOT_REGISTERED'},{status:403});
+    if(!activation&&action!=='deploy')return NextResponse.json({ok:false,code:'INSTALLATION_NOT_REGISTERED'},{status:403});
+    currentBase=(await db().query(
+      "select release_id,product_version,project_id,project_name,deployment_id,deployment_url,created_at from deployment_events where license_id=$1 and installation_id=$2 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' order by created_at desc limit 1",
+      [licenseId,installationId]
+    )).rows[0]||null;
     // First Base deployment is allowed before runtime licence activation.
-    // Billing Store proves entitlement and records the installation/release identity;
-    // Base first setup remains authoritative for licence-key activation and the real installation lock.
+    // Every Base update/redeploy/rollback must already be bound to this installation.
+  }
+
+  const publishedApproved=release.status==='published'&&release.review_status==='approved'&&!release.archived_at;
+  if(updateRollback){
+    if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
+  }else if(action==='redeploy'){
+    if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
+    if(!installationId||!currentBase||String(currentBase.release_id||'')!==String(release.id))return NextResponse.json({ok:false,code:'RELEASE_NOT_CURRENT_BASE'},{status:409});
+  }else if(action==='rollback'){
+    if(release.review_status!=='approved'||!installationId)return NextResponse.json({ok:false,code:'BASE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
+    const prior=(await db().query(
+      "select 1 from deployment_events where license_id=$1 and installation_id=$2 and release_id=$3 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' limit 1",
+      [licenseId,installationId,release.id]
+    )).rows[0];
+    if(!prior)return NextResponse.json({ok:false,code:'BASE_ROLLBACK_TARGET_NOT_INSTALLED'},{status:409});
+  }else if(action==='base_update'){
+    if(!publishedApproved)return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
+    if(!activation||!currentBase)return NextResponse.json({ok:false,code:'BASE_UPDATE_CURRENT_INSTALLATION_REQUIRED'},{status:409});
+    const currentVersion=String(currentBase.product_version||activation.product_version||body?.previousVersion||body?.previous_version||'').trim();
+    const comparison=compareSemver(release.version,currentVersion);
+    if(comparison===null)return NextResponse.json({ok:false,code:'BASE_VERSION_COMPARISON_FAILED'},{status:409});
+    if(comparison===0)return NextResponse.json({ok:false,code:'BASE_UPDATE_ALREADY_CURRENT',message:'Use redeploy to redeploy the currently installed Base release.'},{status:409});
+    if(comparison<0)return NextResponse.json({ok:false,code:'BASE_UPDATE_DOWNGRADE_FORBIDDEN',message:'Use the explicit Base rollback route for a previous installed release.'},{status:409});
+    const previousVersion=String(body?.previousVersion||body?.previous_version||'').trim();
+    if(previousVersion&&previousVersion!==currentVersion)return NextResponse.json({ok:false,code:'BASE_UPDATE_STALE_INSTALLATION'},{status:409});
+    const projectId=String(body?.projectId||body?.project_id||'').trim();
+    if(!projectId)return NextResponse.json({ok:false,code:'BASE_PROJECT_ID_REQUIRED'},{status:409});
+    if(currentBase.project_id&&String(currentBase.project_id)!==projectId)return NextResponse.json({ok:false,code:'BASE_PROJECT_MISMATCH'},{status:409});
+  }else if(!publishedApproved){
+    return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
   }
   const channel=String(release.channel||'stable');
   if(channel!=='stable'&&!updateRollback){
