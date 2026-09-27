@@ -32,11 +32,15 @@ async function ensureChannelAccessSchema(){
         reviewed_at timestamptz,
         reviewed_by text,
         reason text,
-        request_details jsonb not null default '{}'::jsonb,
-        unique(license_id,channel,status)
+        request_details jsonb not null default '{}'::jsonb
       );
       alter table public.release_channel_access_requests
         add column if not exists request_details jsonb not null default '{}'::jsonb;
+      alter table public.release_channel_access_requests
+        drop constraint if exists release_channel_access_requests_license_id_channel_status_key;
+      create unique index if not exists release_channel_access_requests_one_pending_idx
+        on public.release_channel_access_requests(license_id,channel)
+        where status='pending';
 
       create index if not exists release_channel_access_license_idx
         on public.release_channel_access(license_id,channel);
