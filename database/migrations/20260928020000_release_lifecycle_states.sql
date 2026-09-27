@@ -81,6 +81,17 @@ where r.status='disabled'
       and a.action='release.superseded'
   );
 
+update public.releases r
+set status='withdrawn'
+where r.status='disabled'
+  and exists (
+    select 1
+    from public.audit_events a
+    where a.resource_type='release'
+      and a.resource_id=r.id
+      and a.action in ('release.withdraw','release.pause','release.rolled_back','release.reverted')
+  );
+
 create or replace view public.release_lifecycle as
 select
   r.*,
