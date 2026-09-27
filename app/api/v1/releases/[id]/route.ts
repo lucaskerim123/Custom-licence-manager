@@ -36,20 +36,22 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
       return NextResponse.json({release:await markReleaseRolledBack(id,String(body.reason||''),undefined,`api:${control.name}`,action==='revert'?'revert':'rollback')});
     }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Technical release control failed',code:'TECHNICAL_RELEASE_CONTROL_FAILED'},{status:400});}
   }
-  if(['withdraw','archive','restore','delete'].includes(action)){
+  if(action==='delete'){
+    try{
+      const release=(await db().query('select * from releases where id=$1 limit 1',[id])).rows[0];
+      if(!release)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
+      if(release.status==='published'||release.published_at)return NextResponse.json({error:'PUBLISHED_RELEASE_DELETE_FORBIDDEN',code:'PUBLISHED_RELEASE_DELETE_FORBIDDEN'},{status:409});
+      await db().query('delete from releases where id=$1',[id]);
+      await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${auth.name}`,id,JSON.stringify({product_id:release.product_id,version:release.version,channel:release.channel,release_type:release.release_type,status:release.status,review_status:release.review_status,created_at:release.created_at})]);
+      return NextResponse.json({deleted:true,id});
+    }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release delete failed',code:'RELEASE_DELETE_FAILED'},{status:400});}
+  }
+  if(['withdraw','archive','restore'].includes(action)){
     const control=await integrationAuthorized(request,'releases.control');
     if(control){
       try{
         if(action==='withdraw')return NextResponse.json({release:await withdrawRelease(id,undefined,`api:${control.name}`)});
         if(action==='archive')return NextResponse.json({release:await archiveRelease(id,true,undefined,`api:${control.name}`,body.reason?String(body.reason):undefined)});
-        if(action==='delete'){
-          const release=(await db().query('select * from releases where id=$1 limit 1',[id])).rows[0];
-          if(!release)return NextResponse.json({error:'RELEASE_NOT_FOUND'},{status:404});
-          if(release.status==='published'||release.published_at)return NextResponse.json({error:'PUBLISHED_RELEASE_DELETE_FORBIDDEN',code:'PUBLISHED_RELEASE_DELETE_FORBIDDEN'},{status:409});
-          await db().query('delete from releases where id=$1',[id]);
-          await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${control.name}`,id,JSON.stringify({product_id:release.product_id,version:release.version,channel:release.channel,release_type:release.release_type,status:release.status,review_status:release.review_status,created_at:release.created_at})]);
-          return NextResponse.json({deleted:true,id});
-        }
         return NextResponse.json({release:await archiveRelease(id,false,undefined,`api:${control.name}`)});
       }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release lifecycle control failed',code:'RELEASE_LIFECYCLE_CONTROL_FAILED'},{status:400});}
     }
