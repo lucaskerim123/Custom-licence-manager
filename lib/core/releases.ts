@@ -167,12 +167,16 @@ async function scanPackage(row:any,bytes:Buffer){
       const recordComponents=canonicalComponents(recordManifest.components,'base');
       const packageSettings=pkg.projectSettings&&typeof pkg.projectSettings==='object'&&!Array.isArray(pkg.projectSettings)?pkg.projectSettings:{};
       const recordSettings=recordManifest.projectSettings&&typeof recordManifest.projectSettings==='object'&&!Array.isArray(recordManifest.projectSettings)?recordManifest.projectSettings:{};
+      const projectSettingsMatch=
+        String(recordSettings.framework||'')===String(packageSettings.framework||'')
+        &&String(recordSettings.installCommand||'')===String(packageSettings.installCommand||'')
+        &&String(recordSettings.buildCommand||'')===String(packageSettings.buildCommand||'');
       const handoffMatches=String(recordManifest.format||'')===String(pkg.format||'')
         &&Number(recordManifest.schemaVersion||0)===Number(pkg.schemaVersion||0)
         &&Number(recordManifest.fileCount||0)===Number(pkg.fileCount||0)
         &&Number(pkg.fileCount||0)===files.length
         &&packageComponents.join(',')===recordComponents.join(',')
-        &&JSON.stringify(recordSettings)===JSON.stringify(packageSettings);
+        &&projectSettingsMatch;
       checks.push({key:'package_base_handoff',ok:handoffMatches,message:handoffMatches?'License Manager handoff metadata matches the embedded Base package manifest.':'License Manager handoff metadata must match the embedded Base package format, schema version, file count, components and project settings.'});
       checks.push({key:'package_base_format',ok:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2,message:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2?'Base artifact uses orbitfs-base-deployment-v2.':'Base artifact must use orbitfs-base-deployment-v2 package schema 2.'});
       checks.push({key:'database_schema_version',ok:Boolean(packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema),message:packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema?`Base database schema version ${packageDatabaseSchema} is consistent.`:'Base artifact and release record must declare the same databaseSchemaVersion.'});
