@@ -167,7 +167,7 @@ export async function reactivateTerminatedLicense(id:string,actorUserId?:string|
 export async function recordInstallationCheckIn(input:{
   licenseId:string;
   installationId:string;
-  action:'check_in'|'deploy'|'update'|'redeploy'|'rollback';
+  action:'check_in'|'deploy'|'base_update'|'update'|'redeploy'|'rollback';
   phase:'authorize'|'started'|'completed'|'failed';
   product:string;
   productVersion?:string|null;
