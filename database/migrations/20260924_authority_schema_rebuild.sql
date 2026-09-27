@@ -66,7 +66,7 @@ create table if not exists activations (
 create table if not exists releases (
   id uuid primary key default gen_random_uuid(), product_id uuid not null references products(id), channel text not null default 'stable' check(channel ~ '^[a-z0-9][a-z0-9._-]*$'), version text not null,
   release_type text not null check(release_type in ('base','update')), source_repo text, source_ref text, artifact_url text, checksum text,
-  status text not null default 'draft' check(status in ('draft','published','disabled','superseded','withdrawn')), review_status text not null default 'pending' check(review_status in ('pending','approved','rejected')),
+  status text not null default 'draft' check(status in ('draft','published','disabled')), review_status text not null default 'pending' check(review_status in ('pending','approved','rejected')),
   deployment_status text not null default 'not_started' check(deployment_status in ('not_started','queued','deploying','deployed','failed')),
   source_sha text, artifact_name text, artifact_repo text, artifact_run_id bigint, vercel_ready boolean not null default false, supabase_ready boolean not null default false,
   customer_publication_repo text, notes text, manifest jsonb not null default '{}'::jsonb, created_at timestamptz not null default now(), published_at timestamptz,
@@ -169,7 +169,7 @@ create table if not exists deployment_events (
   activation_id uuid references activations(id) on delete set null,
   installation_id text,
   release_id uuid references releases(id) on delete set null,
-  action text not null check(action in ('check_in','deploy','base_update','update','redeploy','rollback')),
+  action text not null check(action in ('check_in','deploy','update','redeploy','rollback')),
   phase text not null check(phase in ('authorize','started','completed','failed')),
   product text,
   product_version text,
