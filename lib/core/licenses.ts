@@ -16,10 +16,10 @@ export async function issueLicense(input: { productId: string; customerExternalI
   const productRow=(await pool.query('select slug from products where id=$1 limit 1',[input.productId])).rows[0];
   if(productRow && productRow.slug!=='orbitfs_base')throw new Error('OrbitFS add-ons are component entitlements on the Base license and cannot be issued as standalone licenses');
 
-  // A customer has one current license per product. Retries or repeated issuance
-  // requests reuse the existing non-terminal record instead of creating duplicates.
-  if(input.customerExternalId){
-    const existingCurrent=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.slug product from licenses l join products p on p.id=l.product_id where p.id=$1 and l.customer_external_id=$2 and l.status not in ('revoked','expired') order by l.created_at desc limit 1`,[input.productId,String(input.customerExternalId)])).rows[0];
+  // Normal customer issuance keeps one current license per product. Explicit
+  // staff/admin override rows are independent license sets and may coexist.
+  if(input.customerExternalId&&!input.customerOverride){
+    const existingCurrent=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.slug product from licenses l join products p on p.id=l.product_id where p.id=$1 and l.customer_external_id=$2 and l.customer_override=false and l.status not in ('revoked','expired') order by l.created_at desc limit 1`,[input.productId,String(input.customerExternalId)])).rows[0];
     if(existingCurrent)return {...existingCurrent,key:undefined,alreadyIssued:true};
   }
   if(input.externalReference){
