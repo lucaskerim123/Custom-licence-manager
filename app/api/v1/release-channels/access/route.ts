@@ -93,11 +93,25 @@ export async function GET(request: Request) {
   if(view==='access'){
     const accessParams:any[]=[]; const accessWhere:string[]=[];
     if(channel){accessParams.push(channel);accessWhere.push(`channel=$${accessParams.length}`);}
-    const access=(await db().query(`select * from release_channel_access ${accessWhere.length?`where ${accessWhere.join(' and ')}`:''} order by channel,updated_at desc`,accessParams)).rows;
+    const access=(await db().query(
+      `select a.*,coalesce(a.external_reference,l.customer_external_id) external_reference
+       from release_channel_access a
+       left join licenses l on l.id=a.license_id
+       ${accessWhere.length?`where ${accessWhere.map((clause)=>`a.${clause}`).join(' and ')}`:''}
+       order by a.channel,a.updated_at desc`,
+      accessParams,
+    )).rows;
     return NextResponse.json({access});
   }
   if(status!=='all'){params.push(status);where.push(`status=$${params.length}`);}
-  const rows=(await db().query(`select * from release_channel_access_requests ${where.length?`where ${where.join(' and ')}`:''} order by requested_at desc`,params)).rows;
+  const rows=(await db().query(
+    `select r.*,coalesce(r.external_reference,l.customer_external_id) external_reference
+     from release_channel_access_requests r
+     left join licenses l on l.id=r.license_id
+     ${where.length?`where ${where.map((clause)=>`r.${clause}`).join(' and ')}`:''}
+     order by r.requested_at desc`,
+    params,
+  )).rows;
   return NextResponse.json({requests:rows});
 }
 
@@ -117,9 +131,26 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const action = String(body.action || (body.revoke ? 'revoke' : 'grant')).trim().toLowerCase();
-  const licenseId = String(body.license_id || body.licenseId || '').trim();
+  let licenseId = String(body.license_id || body.licenseId || '').trim();
   const channel = String(body.channel || '').trim().toLowerCase();
   const externalReference = body.external_reference ?? body.externalReference ?? null;
+  if (!licenseId && externalReference) {
+    const resolved = (
+      await db().query(
+        `select l.id
+         from licenses l
+         join products p on p.id=l.product_id
+         where l.customer_external_id=$1
+           and p.slug='orbitfs_base'
+           and l.status='active'
+           and (l.expires_at is null or l.expires_at>now())
+         order by l.created_at desc
+         limit 1`,
+        [String(externalReference)],
+      )
+    ).rows[0];
+    licenseId = String(resolved?.id || '');
+  }
   const rawRequestDetails = body.request_details ?? body.requestDetails ?? {};
   const requestDetails:{use_case:string;environment:string;notes:string} =
     rawRequestDetails && typeof rawRequestDetails === 'object' && !Array.isArray(rawRequestDetails)
@@ -130,7 +161,7 @@ export async function POST(request: Request) {
         }
       : {use_case:'',environment:'',notes:''};
 
-  if (!licenseId) return NextResponse.json({ error: 'LICENSE_REQUIRED', code:'LICENSE_REQUIRED' }, { status: 400 });
+  if (!licenseId) return NextResponse.json({ error: 'ACTIVE_BASE_LICENSE_REQUIRED', code:'ACTIVE_BASE_LICENSE_REQUIRED' }, { status: 403 });
 
   if (action === 'list_access') {
     const rows = (await db().query(
