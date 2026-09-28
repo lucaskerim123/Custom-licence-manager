@@ -47,6 +47,27 @@ function appendFileChecks(checks:any[],result:ReturnType<typeof inspectPackageFi
   if(result.invalidComponents.length)checks.push({key:`${prefix}_components`,ok:false,message:`${name} has files without valid Engine component metadata: ${result.invalidComponents.slice(0,5).join(', ')}`});
   checks.push({key:`${prefix}_file_integrity`,ok:result.invalidPayload===0,message:result.invalidPayload===0?`Every ${name} file matches its declared size and SHA-256.`:`${result.invalidPayload} ${name} file(s) failed size/SHA-256 verification.`});
 }
+function baseMigrationChainFromFiles(files:any[]){
+  const rows:Array<{id:string;file:string;size:number;sha256:string}>=[];
+  const seen=new Set<string>();
+  let valid=true;
+  for(const entry of Array.isArray(files)?files:[]){
+    const file=String(entry?.file||'').replaceAll('\\','/');
+    const match=file.match(/^supabase\/migrations\/([0-9]{14})_[A-Za-z0-9._-]+\.sql$/);
+    if(!match)continue;
+    const id=match[1];
+    if(seen.has(id)){valid=false;continue;}
+    seen.add(id);
+    if(entry?.encoding!=='base64'||typeof entry?.data!=='string'){valid=false;continue;}
+    const bytes=Buffer.from(entry.data,'base64');
+    const sha256=createHash('sha256').update(bytes).digest('hex');
+    if(bytes.length!==Number(entry?.size)||sha256!==String(entry?.sha256||'').toLowerCase()){valid=false;continue;}
+    rows.push({id,file,size:bytes.length,sha256});
+  }
+  rows.sort((a,b)=>a.id.localeCompare(b.id));
+  for(let index=1;index<rows.length;index++)if(rows[index].id<=rows[index-1].id)valid=false;
+  return {rows,valid};
+}
 async function scanPackage(row:any,bytes:Buffer){
   const checks:any[]=[];
   if(!String(row.artifact_name||'').endsWith('.json.gz')){
@@ -150,6 +171,12 @@ async function scanPackage(row:any,bytes:Buffer){
       const latestMigration=String(pkg.databaseLatestMigration||pkg.releaseInfo?.databaseLatestMigration||'').trim();
       const releaseMigrationCount=Number(row.manifest?.databaseMigrationCount??row.manifest?.releaseInfo?.databaseMigrationCount??0);
       const releaseLatestMigration=String(row.manifest?.databaseLatestMigration||row.manifest?.releaseInfo?.databaseLatestMigration||'').trim();
+      const migrationChain=baseMigrationChainFromFiles(files);
+      const migrationChainOk=Boolean(
+        migrationChain.valid
+        &&migrationChain.rows.length===migrationCount
+        &&migrationChain.rows.at(-1)?.id===latestMigration
+      );
       const databaseSnapshotOk=Boolean(
         schemaPayloadOk
         &&packageSchemaHash
@@ -161,6 +188,7 @@ async function scanPackage(row:any,bytes:Buffer){
         &&migrationCount===releaseMigrationCount
         &&/^\d{14}$/.test(latestMigration)
         &&latestMigration===releaseLatestMigration
+        &&migrationChainOk
       );
       const recordManifest=row.manifest&&typeof row.manifest==='object'?row.manifest:{};
       const packageComponents=canonicalComponents(pkg.components,'base');
@@ -180,6 +208,7 @@ async function scanPackage(row:any,bytes:Buffer){
       checks.push({key:'package_base_handoff',ok:handoffMatches,message:handoffMatches?'License Manager handoff metadata matches the embedded Base package manifest.':'License Manager handoff metadata must match the embedded Base package format, schema version, file count, components and project settings.'});
       checks.push({key:'package_base_format',ok:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2,message:pkg.format==='orbitfs-base-deployment-v2'&&Number(pkg.schemaVersion)===2?'Base artifact uses orbitfs-base-deployment-v2.':'Base artifact must use orbitfs-base-deployment-v2 package schema 2.'});
       checks.push({key:'database_schema_version',ok:Boolean(packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema),message:packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema?`Base database schema version ${packageDatabaseSchema} is consistent.`:'Base artifact and release record must declare the same databaseSchemaVersion.'});
+      checks.push({key:'database_migration_chain',ok:migrationChainOk,message:migrationChainOk?`Base artifact contains ${migrationChain.rows.length} verified migration file(s) through ${latestMigration}.`:'Base artifact migration files must exactly match databaseMigrationCount/databaseLatestMigration and pass size/SHA-256 verification.'});
       checks.push({key:'database_schema_snapshot',ok:databaseSnapshotOk,message:databaseSnapshotOk?`Base artifact contains the verified customer DB snapshot (${migrationCount} migrations, latest ${latestMigration}).`:'Base artifact must contain a checksummed supabase/customer-schema.sql generated from the authoritative migration chain.'});
     }
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
@@ -209,10 +238,11 @@ function baseDatabaseManifestPatch(row:any,bytes:Buffer){
     const databaseMigrationCount=Number(pkg.databaseMigrationCount??pkg.releaseInfo?.databaseMigrationCount??0);
     const databaseLatestMigration=String(pkg.databaseLatestMigration||pkg.releaseInfo?.databaseLatestMigration||'').trim();
     const schemaFile=files.find((file:any)=>String(file?.file||'')===databaseSchemaPath);
-    if(!databaseSchemaVersion||databaseSchemaPath!=='supabase/customer-schema.sql'||!/^[a-f0-9]{64}$/.test(databaseSchemaSha256)||!Number.isInteger(databaseMigrationCount)||databaseMigrationCount<1||!/^\d{14}$/.test(databaseLatestMigration)||schemaFile?.encoding!=='base64'||typeof schemaFile?.data!=='string')return null;
+    const migrationChain=baseMigrationChainFromFiles(files);
+    if(!databaseSchemaVersion||databaseSchemaPath!=='supabase/customer-schema.sql'||!/^[a-f0-9]{64}$/.test(databaseSchemaSha256)||!Number.isInteger(databaseMigrationCount)||databaseMigrationCount<1||!/^\d{14}$/.test(databaseLatestMigration)||schemaFile?.encoding!=='base64'||typeof schemaFile?.data!=='string'||!migrationChain.valid||migrationChain.rows.length!==databaseMigrationCount||migrationChain.rows.at(-1)?.id!==databaseLatestMigration)return null;
     const schemaBytes=Buffer.from(schemaFile.data,'base64');
     if(createHash('sha256').update(schemaBytes).digest('hex')!==databaseSchemaSha256)return null;
-    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration};
+    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows};
   }catch{return null;}
 }
 async function checkArtifact(row: any) {
@@ -304,7 +334,7 @@ async function checkArtifact(row: any) {
     return { checks: [{ key: 'artifact_reachable', ok: false, message: error instanceof Error ? error.message : 'Artifact could not be downloaded.' }] };
   }
 }
-function enrichValidationChecks(checks:any[]){return checks.map((check:any)=>{if(check.ok)return check;const key=String(check.key||"validation");const fixes:any={product:"Activate or restore the release product in License Master.",version:"Provide a valid release version.",changelog:"Add the generated changelog/release notes before approval.",source:"Ensure source repository, ref and commit SHA are recorded.",components:"Correct the manifest component list for the release type.",manifest:"Provide a valid release manifest.",ci:"Fix the originating GitHub Actions build/run and submit the resulting candidate again.",artifact_reference:"Provide the canonical artifact repository, immutable GitHub release tag and exact filename. Base releases must use orbitfs-base-v<version>.json.gz; the workflow does not need to send an artifact URL.",checksum:"Generate the correct SHA-256 checksum for the exact artifact.",artifact_reachable:"Make the release artifact reachable from License Master without authentication that is unavailable to the validator.",artifact_size:"Reduce the release artifact to the supported size limit.",package_format:"Generate the supported OrbitFS .json.gz package format.",package_manifest:"Fix the package manifest structure and required release metadata.",package_paths:"Remove forbidden files or paths from the release package.",package_duplicates:"Remove duplicate paths from the release package.",package_version:"Make the package version match the License Manager release version.",package_source:"Make the package source commit match the recorded release source SHA.",package_files:"Regenerate the package file list/file count.",package_file_integrity:"Regenerate the package so every file size and SHA-256 matches its payload.",package_scan:"Fix the package parsing/structure error and regenerate the artifact.",package_engine_compatibility:"Regenerate the Engine artifact with a valid minimum Base version, deployer protocol and component list.",package_base_handoff:"Regenerate the Stage 1 handoff from the exact embedded Base package manifest; do not reconstruct file count, components, package format or Vercel project settings separately.",package_base_format:"Regenerate the Base artifact using orbitfs-base-deployment-v2 package schema 2.",database_schema_version:"Declare the customer database schema version separately as databaseSchemaVersion in both the Base artifact and License Master release manifest.",package_update_schema:"Add a new immutable supabase/migrations/*.sql file and regenerate the Update Bundle so the orbitfs-db-migrations-v1 ids, sizes and SHA-256 checksums match the Engine payload."};const fix=fixes[key]||"Inspect the failing validation message and correct the underlying release data, artifact, or build issue.";return {...check,fix,prompt:"Fix the "+key+" validation failure shown above. Inspect the related release data, artifact, workflow or code, make the smallest production-safe change, then run the full License Master validation again. Do not change unrelated files."};});}
+function enrichValidationChecks(checks:any[]){return checks.map((check:any)=>{if(check.ok)return check;const key=String(check.key||"validation");const fixes:any={product:"Activate or restore the release product in License Master.",version:"Provide a valid release version.",changelog:"Add the generated changelog/release notes before approval.",source:"Ensure source repository, ref and commit SHA are recorded.",components:"Correct the manifest component list for the release type.",manifest:"Provide a valid release manifest.",ci:"Fix the originating GitHub Actions build/run and submit the resulting candidate again.",artifact_reference:"Provide the canonical artifact repository, immutable GitHub release tag and exact filename. Base releases must use orbitfs-base-v<version>.json.gz; the workflow does not need to send an artifact URL.",checksum:"Generate the correct SHA-256 checksum for the exact artifact.",artifact_reachable:"Make the release artifact reachable from License Master without authentication that is unavailable to the validator.",artifact_size:"Reduce the release artifact to the supported size limit.",package_format:"Generate the supported OrbitFS .json.gz package format.",package_manifest:"Fix the package manifest structure and required release metadata.",package_paths:"Remove forbidden files or paths from the release package.",package_duplicates:"Remove duplicate paths from the release package.",package_version:"Make the package version match the License Manager release version.",package_source:"Make the package source commit match the recorded release source SHA.",package_files:"Regenerate the package file list/file count.",package_file_integrity:"Regenerate the package so every file size and SHA-256 matches its payload.",package_scan:"Fix the package parsing/structure error and regenerate the artifact.",package_engine_compatibility:"Regenerate the Engine artifact with a valid minimum Base version, deployer protocol and component list.",package_base_handoff:"Regenerate the Stage 1 handoff from the exact embedded Base package manifest; do not reconstruct file count, components, package format or Vercel project settings separately.",package_base_format:"Regenerate the Base artifact using orbitfs-base-deployment-v2 package schema 2.",database_schema_version:"Declare the customer database schema version separately as databaseSchemaVersion in both the Base artifact and License Manager release manifest.",database_migration_chain:"Package the complete immutable supabase/migrations chain and make databaseMigrationCount/databaseLatestMigration match the verified files.",package_update_schema:"Add a new immutable supabase/migrations/*.sql file and regenerate the Update Bundle so the orbitfs-db-migrations-v1 ids, sizes and SHA-256 checksums match the Engine payload."};const fix=fixes[key]||"Inspect the failing validation message and correct the underlying release data, artifact, or build issue.";return {...check,fix,prompt:"Fix the "+key+" validation failure shown above. Inspect the related release data, artifact, workflow or code, make the smallest production-safe change, then run the full License Master validation again. Do not change unrelated files."};});}
 
 async function checkWorkflow(row: any) {
   const runId = Number(row.artifact_run_id || 0);
