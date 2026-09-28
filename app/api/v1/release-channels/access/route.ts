@@ -54,11 +54,11 @@ async function ensureChannelAccessSchema(){
       create or replace function touch_release_channel_access_updated_at()
       returns trigger language plpgsql
       set search_path = public
-      as $
+      as $$
       begin
         new.updated_at=now();
         return new;
-      end $;
+      end $$;
 
       drop trigger if exists release_channel_access_touch on public.release_channel_access;
       create trigger release_channel_access_touch
