@@ -16,7 +16,9 @@
     "database/migrations/20260924_runtime_policy_and_pulse.sql": "3af165b56e3409445c3f43867ad1bd6f6a4c0956",
     "database/migrations/20260925_deployment_capability_authority.sql": "b1d366bc55c8c6e1519ad33d81a2b1c047cf1008",
     "database/migrations/20260925_fix_release_channel_trigger_search_path.sql": "06fa91818f227019cff5f53938cf71891d737557",
-    "database/migrations/20260925_repair_release_channel_access_mode.sql": "315d25b96d357e5240b2efa40f35975a6bbb857a"
+    "database/migrations/20260925_repair_release_channel_access_mode.sql": "315d25b96d357e5240b2efa40f35975a6bbb857a",
+    "database/migrations/20260928020000_release_lifecycle_states.sql": "03f849c9917ab41af3773e0b00d0e533192fe0c4",
+    "database/migrations/20260928_allow_admin_multiple_customer_licenses.sql": "2992a40554777f1d42796c13b91199424bf7475e"
   },
   "remote_migrations": [
     {
@@ -110,6 +112,18 @@
     {
       "version": "20260927100944",
       "name": "fix_release_channel_trigger_search_path_20260927"
+    },
+    {
+      "version": "20260927223006",
+      "name": "release_lifecycle_states"
+    },
+    {
+      "version": "20260927223045",
+      "name": "20260928020000_release_lifecycle_states"
+    },
+    {
+      "version": "20260928121932",
+      "name": "allow_admin_multiple_customer_licenses"
     }
   ]
 }
