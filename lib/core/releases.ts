@@ -212,7 +212,7 @@ async function scanPackage(row:any,bytes:Buffer){
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
     const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
     const validState=!isEngineV3||(pkg.componentVersions&&typeof pkg.componentVersions==='object'&&pkg.minimumBaseVersion&&Array.isArray(pkg.components));
-    const engineCompatibility=row.release_type!=='update'||(Array.isArray(pkg.components)&&pkg.components.length>0&&Number.isInteger(Number(pkg.minimumEngineDeployerProtocol))&&Number(pkg.minimumEngineDeployerProtocol)>=1&&semver.test(String(pkg.minimumBaseVersion||'')));
+    const engineCompatibility=row.release_type!=='update'||(Array.isArray(pkg.components)&&pkg.components.length>0&&Number.isInteger(Number(pkg.minimumEngineDeployerProtocol))&&Number(pkg.minimumEngineDeployerProtocol)>=1&&validReleaseVersion(pkg.minimumBaseVersion));
     checks.push({key:'package_manifest',ok:Boolean(pkg.schemaVersion&&pkg.version&&pkg.sourceCommit&&inspected.invalidStructure===0&&validState),message:(inspected.invalidStructure===0&&validState)?'Package manifest structure and target release state are valid.':'Package manifest structure or target release state is invalid.'});
     if(row.release_type==='update')checks.push({key:'package_engine_compatibility',ok:engineCompatibility,message:engineCompatibility?'Engine minimum Base version, deployer protocol and component metadata are valid.':'Engine artifact is missing or has invalid minimum Base version, deployer protocol or component metadata.'});
     appendFileChecks(checks,inspected,'package');
