@@ -24,6 +24,12 @@ export function isOrbitReleaseVersion(value: unknown) {
   return parseOrbitReleaseVersion(value)!==null;
 }
 
+export function orbitReleaseVersionFamily(value: unknown) {
+  const parsed=parseOrbitReleaseVersion(value);
+  if(!parsed)return null;
+  return parsed.prefix==='d'?'dev':parsed.prefix==='b'?'beta':'standard';
+}
+
 export function compareOrbitReleaseVersions(a: unknown,b: unknown): number | null {
   const x=parseOrbitReleaseVersion(a),y=parseOrbitReleaseVersion(b);
   if(!x||!y)return null;
@@ -32,6 +38,7 @@ export function compareOrbitReleaseVersions(a: unknown,b: unknown): number | nul
     const delta=(x.parts[i]||0)-(y.parts[i]||0);
     if(delta)return delta;
   }
+  if(x.parts.length!==y.parts.length)return x.parts.length-y.parts.length;
   if(x.rank!==y.rank)return x.rank-y.rank;
   if(x.prerelease===y.prerelease)return 0;
   if(x.prerelease===null)return 1;
