@@ -199,6 +199,29 @@ export async function acknowledgePulse(input:{
   return {ok:true,receipt:row,pulse:{id:pulse.id,revision:Number(pulse.revision),action:pulse.action,scope:pulse.scope}};
 }
 
+export async function listRecentPulses(limit=20){
+  const safeLimit=Math.min(100,Math.max(1,Math.floor(Number(limit)||20)));
+  try{
+    return (await db().query(
+      `select p.id,p.revision,p.action,p.scope,p.license_id,p.installation_id,p.product,p.component,p.reason,p.requires_ack,p.created_at,p.expires_at,
+              count(r.id)::int receipt_count,
+              count(r.id) filter(where r.status='received')::int received_count,
+              count(r.id) filter(where r.status='applied')::int applied_count,
+              count(r.id) filter(where r.status='failed')::int failed_count,
+              max(r.updated_at) last_receipt_at
+       from license_pulses p
+       left join license_pulse_receipts r on r.pulse_id=p.id
+       group by p.id
+       order by p.revision desc
+       limit $1`,
+      [safeLimit],
+    )).rows;
+  }catch(error:any){
+    if(error?.code==='42P01')return [];
+    throw error;
+  }
+}
+
 export async function setSetting(field:SettingField,value:boolean,actorUserId:string|null,actor:string) {
   const allowed:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
   if(!allowed.includes(field))throw new Error('Unsupported authority setting');
