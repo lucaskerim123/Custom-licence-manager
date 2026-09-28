@@ -569,7 +569,7 @@ export async function promoteRelease(id:string,targetChannel:string,actorUserId?
  // Promotion is not a new technical candidate. The source has already passed License
  // Master validation/approval, so the promoted release preserves that approval and
  // validation state. Publication remains a separate customer-facing action.
- const result=await pool.query(`insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) returning *`,
+ const result=await pool.query(`insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) returning *`,
  [source.product_id,channel.channel,source.version,source.release_type,source.source_repo,source.source_ref,source.artifact_url,source.checksum,source.notes,
   'draft',null,'not_started',
   source.source_sha,source.artifact_name,source.artifact_repo,source.artifact_run_id,source.vercel_ready,source.supabase_ready,source.customer_publication_repo,manifest,revision,source.id]);
