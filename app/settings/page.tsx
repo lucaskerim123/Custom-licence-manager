@@ -1,5 +1,5 @@
 import {requireUser} from '../../lib/session';
-import {getSettings,setSetting,sendPulse,updateRuntimePolicy,type SettingField} from '../../lib/core/settings';
+import {getSettings,listRecentPulses,setSetting,sendPulse,updateRuntimePolicy,type SettingField} from '../../lib/core/settings';
 import {revalidatePath} from 'next/cache';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
@@ -74,6 +74,7 @@ async function pulse(formData:FormData){
 export default async function Settings(){
  const user=await requireUser();
  const s=await getSettings();
+ const recentPulses=await listRecentPulses(20);
  const canManage=['owner','admin'].includes(user.role);
 
  const rows=[
@@ -135,5 +136,19 @@ export default async function Settings(){
     </form>:<div className="muted">Runtime policy is read-only for your role.</div>}
    </div>
   </details>
+
+  <section className="section card">
+   <div className="section-head"><div><div className="eyebrow">Pulse delivery</div><h2>Recent licence directives</h2><p className="muted">Targeted runtime directives and client-reported delivery state. Receipts are observability only; License Manager validation remains authoritative.</p></div><span className="badge">{recentPulses.length} recent</span></div>
+   {recentPulses.length?<div className="table-shell"><table className="table"><thead><tr><th>Revision</th><th>Action</th><th>Target</th><th>Reason</th><th>Receipts</th><th>Created</th></tr></thead><tbody>
+    {recentPulses.map((p:any)=>{const target=p.scope==='global'?'All installations':p.scope==='license'?p.license_id:p.scope==='installation'?p.installation_id:p.scope==='product'?p.product:p.component;return <tr key={p.id}>
+     <td><strong className="mono">#{Number(p.revision)}</strong></td>
+     <td><strong>{String(p.action||'').replaceAll('_',' ')}</strong><small className="muted" style={{display:'block'}}>{p.scope}</small></td>
+     <td><span className="mono">{target||'—'}</span></td>
+     <td>{p.reason||'—'}</td>
+     <td><div>{Number(p.applied_count||0)} applied · {Number(p.failed_count||0)} failed</div><small className="muted">{Number(p.received_count||0)} received · {Number(p.receipt_count||0)} total</small></td>
+     <td>{p.created_at?new Date(p.created_at).toLocaleString():'—'}</td>
+    </tr>})}
+   </tbody></table></div>:<div className="muted">No targeted pulse records yet. Apply the 20260929 targeted pulse migration before using protocol v2.</div>}
+  </section>
  </main></div>;
 }
