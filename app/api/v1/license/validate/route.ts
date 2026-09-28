@@ -31,6 +31,8 @@ export async function POST(request: Request) {
   const key = String(body?.license_key ?? body?.licenseKey ?? '').trim();
   const product = String(body?.product ?? body?.product_code ?? '').trim().toLowerCase();
   const installationId = String(body?.installation_id ?? body?.installationId ?? '').trim();
+  const component = String(body?.component ?? body?.component_code ?? product).trim().toLowerCase();
+  const action = String(body?.action ?? 'validate').trim().toLowerCase();
 
   if (!key || !product) {
     return NextResponse.json({ valid: false, code: 'INVALID_REQUEST' }, { status: 400 });
@@ -40,6 +42,7 @@ export async function POST(request: Request) {
     const result = await validateLicense({
       key,
       productSlug: product,
+      componentSlug: component || product,
       installationId: installationId || undefined,
       productVersion:
         body?.product_version ?? body?.productVersion
@@ -49,6 +52,7 @@ export async function POST(request: Request) {
       requestIp: requestIp(request),
       userAgent: request.headers.get('user-agent'),
       telemetry: telemetry(body),
+      action,
     });
 
     if (result.valid && String(body?.action || 'validate').toLowerCase() === 'check_in') {
@@ -120,6 +124,8 @@ export async function POST(request: Request) {
         expires_at: result.expires_at ?? null,
         expiresAt: result.expires_at ?? null,
         metadata: result.metadata ?? {},
+        components: (result as any).components ?? {},
+        installation: (result as any).installation ?? null,
         license_id: result.license_id ?? null,
         runtime_policy: (result as any).runtime_policy ?? null,
         pulse_revision: (result as any).runtime_policy?.pulse_revision ?? null,
