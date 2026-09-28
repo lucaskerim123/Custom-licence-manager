@@ -71,6 +71,7 @@ export default function LicenseForm({products}:{products:{id:string,name:string}
    <label>External reference<input className="input" name="reference" defaultValue={editing?.external_reference||''} placeholder="Order / subscription reference"/></label>
    <label>Expiry<input className="input" name="expires" type="datetime-local" defaultValue={expires}/></label>
    <label>Installation limit<input className="input" value="1 active system" readOnly/><small className="muted">OrbitFS licences are permanently limited to one bound system at a time. Base and add-ons share this one system.</small></label>
+   {!editing&&<label className="toggle"><input type="checkbox" name="customer_override"/><span><b>Allow an additional current licence for this customer</b><small>Admin override only. This creates a separate Base licence set instead of reusing the customer&apos;s existing current licence.</small></span></label>}
    <fieldset className="component-editor"><legend>Component entitlements</legend>
     <label><input type="checkbox" checked readOnly/> OrbitFS Base</label>
     <label><input type="checkbox" name="orbitfs_apex" defaultChecked={Boolean(components.orbitfs_apex)}/> OrbitFS APEX</label>

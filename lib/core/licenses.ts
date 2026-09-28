@@ -16,10 +16,10 @@ export async function issueLicense(input: { productId: string; customerExternalI
   const productRow=(await pool.query('select slug from products where id=$1 limit 1',[input.productId])).rows[0];
   if(productRow && productRow.slug!=='orbitfs_base')throw new Error('OrbitFS add-ons are component entitlements on the Base license and cannot be issued as standalone licenses');
 
-  // A customer has one current license per product. Retries or repeated issuance
-  // requests reuse the existing non-terminal record instead of creating duplicates.
-  if(input.customerExternalId){
-    const existingCurrent=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.slug product from licenses l join products p on p.id=l.product_id where p.id=$1 and l.customer_external_id=$2 and l.status not in ('revoked','expired') order by l.created_at desc limit 1`,[input.productId,String(input.customerExternalId)])).rows[0];
+  // Normal customer issuance keeps one current license per product. Explicit
+  // staff/admin override rows are independent license sets and may coexist.
+  if(input.customerExternalId&&!input.customerOverride){
+    const existingCurrent=(await pool.query(`select l.id,l.status,l.expires_at,l.license_key_last4,l.customer_external_id,l.customer_override,l.metadata,p.slug product from licenses l join products p on p.id=l.product_id where p.id=$1 and l.customer_external_id=$2 and l.customer_override=false and l.status not in ('revoked','expired') order by l.created_at desc limit 1`,[input.productId,String(input.customerExternalId)])).rows[0];
     if(existingCurrent)return {...existingCurrent,key:undefined,alreadyIssued:true};
   }
   if(input.externalReference){
@@ -197,7 +197,7 @@ export async function recordInstallationCheckIn(input:{
   const details=input.details&&typeof input.details==='object'?input.details:{};
   const components=(details.components&&typeof details.components==='object')?details.components:{};
   if(!activation){
-    if(!['deploy','redeploy'].includes(input.action)) throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
+    if(input.action==='check_in') throw Object.assign(new Error('Installation is not registered for this license'),{code:'INSTALLATION_NOT_REGISTERED',status:403});
     await pool.query('insert into deployment_events(license_id,activation_id,installation_id,release_id,action,phase,product,product_version,previous_version,deployment_id,deployment_url,project_id,project_name,provider,region,platform,architecture,hostname,client,client_version,source_ip,user_agent,customer_identity,details) values($1,null,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)',[
       input.licenseId,input.installationId,input.releaseId??null,input.action,input.phase,input.product,input.productVersion??null,input.previousVersion??null,input.deploymentId??null,input.deploymentUrl??null,input.projectId??null,input.projectName??null,input.provider??null,input.region??null,input.platform??null,input.architecture??null,input.hostname??null,input.client??null,input.clientVersion??null,input.sourceIp??null,input.userAgent??null,JSON.stringify(input.customerIdentity??{}),JSON.stringify({...details,activationPending:true})
     ]);

@@ -15,13 +15,13 @@ export async function issueLicenseAction(_prev:{ok:boolean,key:string,error:stri
   if(!product) return {ok:false,key:'',error:'Product not found or disabled'};
   if(product.slug!=='orbitfs_base')return {ok:false,key:'',error:'OrbitFS add-ons are component entitlements on the Base licence'};
   const customer=String(formData.get('customer')||'').trim();
-  const customerOverride=customer.toUpperCase()==='ADMIN';
+  const customerOverride=customer.toUpperCase()==='ADMIN'||formData.get('customer_override')==='on';
   const expires=String(formData.get('expires')||'');
   let expiresAt:Date|null=null;
   if(expires){expiresAt=new Date(expires);if(Number.isNaN(expiresAt.getTime()))return {ok:false,key:'',error:'Invalid expiry'};}
   try{
     const components={orbitfs_base:true,orbitfs_apex:formData.get('orbitfs_apex')==='on',orbitfs_mcp:formData.get('orbitfs_mcp')==='on',orbitfs_studio:formData.get('orbitfs_studio')==='on'};
-    const metadata={...(customerOverride?{issuance_mode:'admin_override'}:{}),license_policy:{max_installations:1,components}};
+    const metadata={...(customerOverride?{issuance_mode:'admin_multiple_license_override'}:{}),license_policy:{max_installations:1,components}};
     const result=await issueLicense({productId,customerExternalId:customer||null,customerOverride,externalReference:String(formData.get('reference')||'')||null,expiresAt,actorUserId:user.id,actor:user.email,metadata});
     revalidatePath('/licenses');
     return {ok:true,key:result.key,error:''};
