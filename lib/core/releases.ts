@@ -443,25 +443,31 @@ async function validateSourceIdentity(row:any){
 async function validateUpdateBaseCompatibility(row:any){
  if(row.release_type!=='update')return {key:'minimum_base',ok:true,message:'Base compatibility check is not required for Base releases.'};
  const manifest=row.manifest&&typeof row.manifest==='object'?row.manifest:{};
- const version=String(manifest.minimumBaseVersion||'').trim();
- if(!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version))return {key:'minimum_base',ok:false,message:'Update minimumBaseVersion is missing or invalid.'};
- const base=(await db().query(`
-  select r.id,r.version,r.channel,r.status,r.review_status,r.manifest
+ const minimumVersion=String(manifest.minimumBaseVersion||'').trim();
+ const baseChannel=String(manifest.baseCompatibilityChannel||manifest.minimumBaseChannel||row.channel||'stable').trim().toLowerCase()||'stable';
+ if(!isOrbitReleaseVersion(minimumVersion))return {key:'minimum_base',ok:false,message:'Update minimumBaseVersion is missing or invalid.'};
+ const rows=(await db().query(`
+  select r.id,r.version,r.channel,r.status,r.review_status,r.manifest,r.published_at,r.created_at
   from releases r join products p on p.id=r.product_id
   where p.slug='orbitfs_base'
     and r.release_type='base'
     and r.channel=$1
-    and r.version=$2
     and r.status='published'
     and r.review_status='approved'
     and r.archived_at is null
-  order by r.published_at desc nulls last,r.created_at desc
-  limit 1`,[row.channel,version])).rows[0];
- if(!base)return {key:'minimum_base',ok:false,message:`No published + approved Base ${version} exists in channel ${row.channel}.`};
- const m=base.manifest&&typeof base.manifest==='object'?base.manifest:{};
- const schema=String(m.databaseSchemaSha256||m.releaseInfo?.databaseSchemaSha256||'');
- const ok=/^[a-f0-9]{64}$/i.test(schema);
- return {key:'minimum_base',ok,message:ok?`Published Base ${version} in ${row.channel} is a valid compatibility anchor.`:`Published Base ${version} exists but lacks the required customer DB snapshot contract.`};
+  order by r.published_at desc nulls last,r.created_at desc`,[baseChannel])).rows;
+ const compatible=rows.filter((base:any)=>{
+   const comparison=compareOrbitReleaseVersions(String(base.version||''),minimumVersion);
+   const m=base.manifest&&typeof base.manifest==='object'?base.manifest:{};
+   const schema=String(m.databaseSchemaSha256||m.releaseInfo?.databaseSchemaSha256||'');
+   return comparison!==null&&comparison>=0&&/^[a-f0-9]{64}$/i.test(schema);
+ }).sort((a:any,b:any)=>compareOrbitReleaseVersions(String(b.version||''),String(a.version||''))??0);
+ const base=compatible[0];
+ if(!base){
+   const available=rows.map((candidate:any)=>String(candidate.version||'')).filter(Boolean);
+   return {key:'minimum_base',ok:false,message:`No published + approved Base at or above minimum ${minimumVersion} exists in channel ${baseChannel} with the required customer DB snapshot contract.${available.length?` Available published Base versions: ${available.join(', ')}.`:''}`};
+ }
+ return {key:'minimum_base',ok:true,message:`Minimum Base ${minimumVersion} is satisfied by published Base ${base.version} in ${baseChannel}.`};
 }
 
 async function validateVersionProgression(row:any){
@@ -518,8 +524,8 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
    immediatePrevious=currentlyPublished[0]||null;
    if(currentlyPublished.length){
     superseded=(await client.query(
-     "update releases set status='superseded' where id = any($1::uuid[]) returning id,version,published_at",
-     [currentlyPublished.map((item:any)=>item.id)]
+     "update releases set status='superseded',archived_at=coalesce(archived_at,now()),archived_by=coalesce(archived_by,$2::uuid) where id = any($1::uuid[]) returning id,version,published_at,archived_at",
+     [currentlyPublished.map((item:any)=>item.id),actorUserId??null]
     )).rows;
    }
   }
@@ -534,7 +540,7 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
   for(const previous of superseded){
    await client.query(
     "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.superseded','release',$3,$4)",
-    [actorUserId??null,actor??'admin',previous.id,JSON.stringify({superseded_by:id,version:previous.version,channel:row.channel,release_type:'base'})]
+    [actorUserId??null,actor??'admin',previous.id,JSON.stringify({superseded_by:id,version:previous.version,channel:row.channel,release_type:'base',archived:true,preserve_rollback_history:true})]
    );
   }
   await client.query(
