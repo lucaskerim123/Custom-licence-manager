@@ -2,11 +2,9 @@ import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../lib/auth';
 import {db} from '../../../../lib/db';
 import {recordInstallationCheckIn} from '../../../../lib/core/licenses';
+import {compareOrbitReleaseVersions} from '../../../../lib/core/versioning';
 
 function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
-const SEMVER=/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
-function compareSemver(a:any,b:any){const x=String(a||'').match(SEMVER),y=String(b||'').match(SEMVER);if(!x||!y)return null;return Number(x[1])-Number(y[1])||Number(x[2])-Number(y[2])||Number(x[3])-Number(y[3]);}
-
 export async function POST(request:Request){
   const actor=await integrationAuthorized(request,'deployment.write');
   if(!actor)return NextResponse.json({ok:false,code:'UNAUTHORIZED'},{status:401});
@@ -79,7 +77,7 @@ export async function POST(request:Request){
     if(!publishedApproved)return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
     if(!currentBase)return NextResponse.json({ok:false,code:'BASE_UPDATE_CURRENT_INSTALLATION_REQUIRED'},{status:409});
     const currentVersion=String(currentBase.product_version||body?.previousVersion||body?.previous_version||'').trim();
-    const comparison=compareSemver(release.version,currentVersion);
+    const comparison=compareOrbitReleaseVersions(release.version,currentVersion);
     if(comparison===null)return NextResponse.json({ok:false,code:'BASE_VERSION_COMPARISON_FAILED'},{status:409});
     if(comparison===0)return NextResponse.json({ok:false,code:'BASE_UPDATE_ALREADY_CURRENT',message:'Use redeploy to redeploy the currently installed Base release.'},{status:409});
     if(comparison<0)return NextResponse.json({ok:false,code:'BASE_UPDATE_DOWNGRADE_FORBIDDEN',message:'Use the explicit Base rollback route for a previous installed release.'},{status:409});
