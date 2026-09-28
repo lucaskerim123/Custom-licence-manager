@@ -38,13 +38,23 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
   }
   if(action==='delete'){
     try{
-      const deleted=(await db().query("delete from releases where id=$1 and ((status='draft' and published_at is null) or archived_at is not null) returning *",[id])).rows[0];
-      if(!deleted){
-        const current=(await db().query('select id,status from releases where id=$1 limit 1',[id])).rows[0];
-        if(!current)return NextResponse.json({error:'RELEASE_NOT_FOUND',code:'RELEASE_NOT_FOUND'},{status:404});
-        return NextResponse.json({error:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',code:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',status:current.status},{status:409});
+      const release=(await db().query('select * from releases where id=$1 limit 1',[id])).rows[0];
+      if(!release)return NextResponse.json({error:'RELEASE_NOT_FOUND',code:'RELEASE_NOT_FOUND'},{status:404});
+      const confirmation=String(body.confirmation||body.confirm||'').trim();
+      const expected=`DELETE_RELEASE:${id}:${release.version}`;
+      if(body.permanent!==true||confirmation!==expected){
+        return NextResponse.json({
+          error:'PERMANENT_RELEASE_DELETE_CONFIRMATION_REQUIRED',
+          code:'PERMANENT_RELEASE_DELETE_CONFIRMATION_REQUIRED',
+          confirmation_required:expected,
+          message:'Permanent deletion destroys rollback history. Archive or supersede releases instead unless deliberate deletion is explicitly confirmed.'
+        },{status:409});
       }
-      await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${auth.name}`,id,JSON.stringify({product_id:deleted.product_id,version:deleted.version,channel:deleted.channel,release_type:deleted.release_type,status:deleted.status,review_status:deleted.review_status,created_at:deleted.created_at,published_at:deleted.published_at??null})]);
+      if(release.status==='published'||(!release.archived_at&&!(release.status==='draft'&&!release.published_at))){
+        return NextResponse.json({error:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',code:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',status:release.status},{status:409});
+      }
+      const deleted=(await db().query('delete from releases where id=$1 returning *',[id])).rows[0];
+      await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${auth.name}`,id,JSON.stringify({product_id:deleted.product_id,version:deleted.version,channel:deleted.channel,release_type:deleted.release_type,status:deleted.status,review_status:deleted.review_status,created_at:deleted.created_at,published_at:deleted.published_at??null,permanent:true,confirmation})]);
       return NextResponse.json({deleted:true,id,previous_status:deleted.status});
     }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Release delete failed',code:'RELEASE_DELETE_FAILED'},{status:400});}
   }
