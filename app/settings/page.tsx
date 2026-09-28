@@ -9,6 +9,15 @@ export const dynamic='force-dynamic';
 
 const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
 
+const manualPulseOptions=[
+ {value:'manual-full-license-recheck',label:'Full licence recheck'},
+ {value:'manual-validation-recheck',label:'Licence validation recheck'},
+ {value:'manual-entitlement-recheck',label:'Component entitlement recheck'},
+ {value:'manual-installation-recheck',label:'Installation binding recheck'},
+ {value:'manual-authority-recheck',label:'Authority state recheck'},
+ {value:'manual-runtime-policy-recheck',label:'Runtime policy recheck'},
+] as const;
+
 async function updateSettings(formData:FormData){
  'use server';
  const user=await requireUser();if(!['owner','admin'].includes(user.role))return;
@@ -34,7 +43,9 @@ async function updatePolicy(formData:FormData){
 async function pulse(formData:FormData){
  'use server';
  const user=await requireUser();if(!['owner','admin'].includes(user.role))return;
- await sendPulse(user.id,user.email,String(formData.get('reason')||'manual-admin-pulse'),{source:'settings'});
+ const requested=String(formData.get('reason')||'manual-full-license-recheck');
+ const preset=manualPulseOptions.find(option=>option.value===requested)??manualPulseOptions[0];
+ await sendPulse(user.id,user.email,preset.value,{source:'settings',label:preset.label});
  revalidatePath('/settings');revalidatePath('/');
 }
 
@@ -82,7 +93,7 @@ export default async function Settings(){
    <div className="collapsible-body">
     <div className="policy-status">
      <div><span className="status-light online"/><strong>Last authoritative pulse</strong><small>{s.pulse_at?new Date(s.pulse_at).toLocaleString():'Never'} · {s.pulse_reason||'No reason recorded'}</small></div>
-     {canManage&&<form action={pulse} className="pulse-form"><input className="input" name="reason" defaultValue="manual-validation-recheck"/><button className="button">Send pulse</button></form>}
+     {canManage&&<form action={pulse} className="pulse-form"><select className="input" name="reason" defaultValue="manual-full-license-recheck">{manualPulseOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><button className="button">Send pulse</button></form>}
     </div>
     {canManage?<form className="policy-grid" action={updatePolicy}>
      <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="5" max="86400" defaultValue={Number(s.validation_ttl_seconds||60)}/><b>sec</b></div></label>
