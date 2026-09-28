@@ -100,22 +100,24 @@ export async function listApplicablePulses(input:{sinceRevision?:number;licenseI
   const params:any[]=[since];
   const applies:string[]=[`p.scope='global'`];
   const add=(value:any)=>{params.push(value);return '$'+params.length;};
+  const licenseParam=input.licenseId?add(String(input.licenseId)):null;
+
   if(input.product){
-    const p=add(String(input.product).toLowerCase());
-    applies.push(`(p.scope='product' and p.product=${p})`);
+    const productParam=add(String(input.product).toLowerCase());
+    applies.push(`(p.scope='product' and p.product=${productParam})`);
   }
-  if(input.licenseId){
-    const p=add(String(input.licenseId));
-    applies.push(`(p.scope='license' and p.license_id::text=${p})`);
+  if(licenseParam){
+    applies.push(`(p.scope='license' and p.license_id::text=${licenseParam})`);
   }
   if(input.installationId){
-    const p=add(String(input.installationId));
-    applies.push(`(p.scope='installation' and p.installation_id=${p})`);
+    const installationParam=add(String(input.installationId));
+    applies.push(`(p.scope='installation' and p.installation_id=${installationParam} and (p.license_id is null${licenseParam?` or p.license_id::text=${licenseParam}`:''}))`);
   }
   if(input.component){
-    const p=add(String(input.component).toLowerCase());
-    applies.push(`(p.scope='component' and p.component=${p})`);
+    const componentParam=add(String(input.component).toLowerCase());
+    applies.push(`(p.scope='component' and p.component=${componentParam} and (p.license_id is null${licenseParam?` or p.license_id::text=${licenseParam}`:''}))`);
   }
+
   const limitParam=add(limit);
   try{
     return (await db().query(
