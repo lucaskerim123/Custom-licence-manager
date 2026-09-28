@@ -10,12 +10,23 @@ export const dynamic='force-dynamic';
 const allowedFields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
 
 const manualPulseOptions=[
- {value:'manual-full-license-recheck',label:'Full licence recheck'},
- {value:'manual-validation-recheck',label:'Licence validation recheck'},
- {value:'manual-entitlement-recheck',label:'Component entitlement recheck'},
- {value:'manual-installation-recheck',label:'Installation binding recheck'},
- {value:'manual-authority-recheck',label:'Authority state recheck'},
- {value:'manual-runtime-policy-recheck',label:'Runtime policy recheck'},
+ {value:'full_recheck',label:'Full licence recheck'},
+ {value:'revalidate_license',label:'Licence validation recheck'},
+ {value:'refresh_entitlements',label:'Component entitlement recheck'},
+ {value:'refresh_binding',label:'Installation binding recheck'},
+ {value:'refresh_authority',label:'Authority state recheck'},
+ {value:'refresh_runtime_policy',label:'Runtime policy recheck'},
+ {value:'invalidate_cache',label:'Invalidate cached licence state'},
+ {value:'request_check_in',label:'Request installation check-in'},
+ {value:'refresh_release_access',label:'Release access recheck'},
+] as const;
+
+const manualPulseScopes=[
+ {value:'global',label:'All installations'},
+ {value:'product',label:'Product'},
+ {value:'license',label:'Specific licence'},
+ {value:'installation',label:'Specific installation'},
+ {value:'component',label:'Component'},
 ] as const;
 
 async function updateSettings(formData:FormData){
@@ -43,9 +54,20 @@ async function updatePolicy(formData:FormData){
 async function pulse(formData:FormData){
  'use server';
  const user=await requireUser();if(!['owner','admin'].includes(user.role))return;
- const requested=String(formData.get('reason')||'manual-full-license-recheck');
+ const requested=String(formData.get('pulse_action')||'full_recheck');
  const preset=manualPulseOptions.find(option=>option.value===requested)??manualPulseOptions[0];
- await sendPulse(user.id,user.email,preset.value,{source:'settings',label:preset.label});
+ const requestedScope=String(formData.get('pulse_scope')||'global');
+ const scope=manualPulseScopes.find(option=>option.value===requestedScope)?.value??'global';
+ await sendPulse(user.id,user.email,`manual-${preset.value}`,{
+  source:'settings',
+  label:preset.label,
+  pulse_action:preset.value,
+  pulse_scope:scope,
+  license_id:String(formData.get('license_id')||'').trim()||null,
+  installation_id:String(formData.get('installation_id')||'').trim()||null,
+  product:String(formData.get('product')||'').trim().toLowerCase()||null,
+  component:String(formData.get('component')||'').trim().toLowerCase()||null,
+ });
  revalidatePath('/settings');revalidatePath('/');
 }
 
@@ -93,8 +115,16 @@ export default async function Settings(){
    <div className="collapsible-body">
     <div className="policy-status">
      <div><span className="status-light online"/><strong>Last authoritative pulse</strong><small>{s.pulse_at?new Date(s.pulse_at).toLocaleString():'Never'} · {s.pulse_reason||'No reason recorded'}</small></div>
-     {canManage&&<form action={pulse} className="pulse-form"><select className="input" name="reason" defaultValue="manual-full-license-recheck">{manualPulseOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><button className="button">Send pulse</button></form>}
     </div>
+    {canManage&&<form action={pulse} className="policy-grid">
+     <label><span>Pulse action</span><select className="input" name="pulse_action" defaultValue="full_recheck">{manualPulseOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+     <label><span>Target scope</span><select className="input" name="pulse_scope" defaultValue="global">{manualPulseScopes.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+     <label><span>Licence ID</span><input className="input" name="license_id" placeholder="Optional unless licence-scoped"/></label>
+     <label><span>Installation ID</span><input className="input" name="installation_id" placeholder="Optional unless installation-scoped"/></label>
+     <label><span>Product</span><input className="input" name="product" defaultValue="orbitfs_base"/></label>
+     <label><span>Component</span><input className="input" name="component" placeholder="orbitfs_base / apex / mcp / studio"/></label>
+     <div className="policy-submit"><button className="button">Send targeted pulse</button></div>
+    </form>}
     {canManage?<form className="policy-grid" action={updatePolicy}>
      <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="5" max="86400" defaultValue={Number(s.validation_ttl_seconds||60)}/><b>sec</b></div></label>
      <label><span>Pulse poll interval</span><div className="number-input"><input className="input" name="pulse_poll_seconds" type="number" min="5" max="3600" defaultValue={Number(s.pulse_poll_seconds||15)}/><b>sec</b></div></label>
