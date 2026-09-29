@@ -21,7 +21,7 @@ export async function POST(request:Request){
   if(!PHASES.has(phase))return NextResponse.json({ok:false,code:'INVALID_LIFECYCLE_PHASE'},{status:400});
   if(!licenseId||!installationId)return NextResponse.json({ok:false,code:'LICENSE_AND_INSTALLATION_REQUIRED'},{status:400});
 
-  const license=(await db().query('select id,status,expires_at from licenses where id=$1 limit 1',[licenseId])).rows[0];
+  const license=(await db().query('select id,status,expires_at,license_key_last4,metadata from licenses where id=$1 limit 1',[licenseId])).rows[0];
   if(!license)return NextResponse.json({ok:false,code:'LICENSE_NOT_FOUND'},{status:404});
 
   const activation=(await db().query(
@@ -49,6 +49,16 @@ export async function POST(request:Request){
       await setInstallationStatus(activation.id,'released',null,'orbitfs-base-reinstall');
       details.activationStatus='released';
     }
+    const metadata=license.metadata&&typeof license.metadata==='object'?{...license.metadata}:{};
+    metadata.base_reinstall_rotation_required={
+      installationId,
+      requestedAt:new Date().toISOString(),
+      previousKeyLast4:license.license_key_last4||null,
+      targetReleaseId:details.targetReleaseId||null,
+      targetVersion:details.targetVersion||null,
+      channel:details.channel||null,
+    };
+    await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
   }
 
   if(phase==='completed'&&action==='uninstall'&&releaseLicense&&activation&&activation.status!=='released'){
