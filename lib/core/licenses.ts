@@ -84,6 +84,12 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
     bindingStatus=String(currentActivation?.status||'unregistered');
   }
 
+  const rotationRequired=license.metadata&&typeof license.metadata==='object'&&license.metadata.base_reinstall_rotation_required&&typeof license.metadata.base_reinstall_rotation_required==='object'?license.metadata.base_reinstall_rotation_required:null;
+  if(rotationRequired&&licenseEligible){
+    const components=runtimeComponentStates(String(license.component),entitledComponents,false);
+    return{valid:false,code:'LICENSE_ROTATION_REQUIRED' as const,status:409,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy,components,installation:{installation_id:input.installationId||null,status:bindingStatus,locked:false}};
+  }
+
   if(validLicense&&input.installationId){
     const client=await pool.connect();
     try{
@@ -161,13 +167,19 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
   const pool=db();const client=await pool.connect();
   try{
     await client.query('BEGIN');
-    const current=(await client.query('select id,status,license_key_last4 from licenses where id=$1 for update',[id])).rows[0];
+    const current=(await client.query('select id,status,license_key_last4,metadata from licenses where id=$1 for update',[id])).rows[0];
     if(!current)throw new Error('License not found');
     if(current.status!=='active')throw new Error('Only an active licence can be rotated');
     const key=generateLicenseKey(),previousLast4=current.license_key_last4||null;
-    const result=(await client.query(`update licenses set license_key_hash=$1,license_key_last4=$2 where id=$3 returning id,status,expires_at,customer_external_id,customer_override`,[hashKey(key),key.slice(-4),id])).rows[0];
+    const metadata=current.metadata&&typeof current.metadata==='object'?{...current.metadata}:{};
+    const reinstallRotation=metadata.base_reinstall_rotation_required&&typeof metadata.base_reinstall_rotation_required==='object'?metadata.base_reinstall_rotation_required:null;
+    if(reinstallRotation){
+      metadata.base_reinstall_last_rotation={...reinstallRotation,rotatedAt:new Date().toISOString(),newKeyLast4:key.slice(-4)};
+      delete metadata.base_reinstall_rotation_required;
+    }
+    const result=(await client.query(`update licenses set license_key_hash=$1,license_key_last4=$2,metadata=$3 where id=$4 returning id,status,expires_at,customer_external_id,customer_override`,[hashKey(key),key.slice(-4),JSON.stringify(metadata),id])).rows[0];
     await client.query("update activations set status='released',last_seen_at=now() where license_id=$1 and status='active'",[id]);
-    await client.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.rotate','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({previous_last4:previousLast4,rotated_in_place:true,binding_released:true})]);
+    await client.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'license.rotate','license',$3,$4)`,[actorUserId??null,actor??'system',id,JSON.stringify({previous_last4:previousLast4,rotated_in_place:true,binding_released:true,base_reinstall_rotation_completed:Boolean(reinstallRotation)})]);
     await client.query('COMMIT');
     const pulse=await sendPulse(actorUserId??null,actor??'system','license-key-rotated',{license_id:id,binding_state:'unlocked'});
     return {...result,key,alreadyIssued:false,pulse};
