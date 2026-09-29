@@ -512,7 +512,11 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
   if(row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Release must pass validation for this exact source/artifact before publication');
 
   let superseded:any[]=[];
+  let archivedHistory:any[]=[];
   let immediatePrevious:any=null;
+
+  // Base publication exposes one current release and one previous rollback release.
+  // Normal Update publication is a separate system and is intentionally untouched here.
   if(row.release_type==='base'){
    await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(row.product_id)+':'+String(row.channel)+':base']);
    const currentlyPublished=(await client.query(
@@ -520,12 +524,18 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
     [row.product_id,row.channel,id]
    )).rows;
    immediatePrevious=currentlyPublished[0]||null;
+
    if(currentlyPublished.length){
     superseded=(await client.query(
-     "update releases set status='superseded',archived_at=coalesce(archived_at,now()),archived_by=coalesce(archived_by,$2::uuid) where id = any($1::uuid[]) returning id,version,published_at,archived_at",
-     [currentlyPublished.map((item:any)=>item.id),actorUserId??null]
+     "update releases set status='superseded',archived_at=case when id=$2::uuid then null else coalesce(archived_at,now()) end,archived_by=case when id=$2::uuid then null else coalesce(archived_by,$3::uuid) end where id = any($1::uuid[]) returning id,version,published_at,archived_at",
+     [currentlyPublished.map((item:any)=>item.id),immediatePrevious?.id??null,actorUserId??null]
     )).rows;
    }
+
+   archivedHistory=(await client.query(
+    "update releases set archived_at=coalesce(archived_at,now()),archived_by=coalesce(archived_by,$3::uuid) where product_id=$1 and channel=$2 and release_type='base' and status='superseded' and archived_at is null and ($4::uuid is null or id<>$4::uuid) returning id,version,published_at,archived_at",
+    [row.product_id,row.channel,actorUserId??null,immediatePrevious?.id??null]
+   )).rows;
   }
 
   const result=await client.query(
@@ -538,12 +548,18 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
   for(const previous of superseded){
    await client.query(
     "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.superseded','release',$3,$4)",
-    [actorUserId??null,actor??'admin',previous.id,JSON.stringify({superseded_by:id,version:previous.version,channel:row.channel,release_type:'base',archived:true,preserve_rollback_history:true})]
+    [actorUserId??null,actor??'admin',previous.id,JSON.stringify({superseded_by:id,version:previous.version,channel:row.channel,release_type:'base',archived:Boolean(previous.archived_at),rollback_slot:String(previous.id)===String(immediatePrevious?.id||'')})]
+   );
+  }
+  for(const historical of archivedHistory){
+   await client.query(
+    "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.history.hidden','release',$3,$4)",
+    [actorUserId??null,actor??'admin',historical.id,JSON.stringify({new_current_release_id:id,version:historical.version,channel:row.channel,release_type:'base',preserve_audit_history:true})]
    );
   }
   await client.query(
    "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.publish','release',$3,$4)",
-   [actorUserId??null,actor??'admin',id,JSON.stringify({deployment_status:'queued',superseded_release_ids:superseded.map((x:any)=>x.id)})]
+   [actorUserId??null,actor??'admin',id,JSON.stringify({deployment_status:'queued',previous_release_id:immediatePrevious?.id??null,superseded_release_ids:superseded.map((x:any)=>x.id),hidden_history_ids:archivedHistory.map((x:any)=>x.id)})]
   );
   await client.query('COMMIT');
   return published;
