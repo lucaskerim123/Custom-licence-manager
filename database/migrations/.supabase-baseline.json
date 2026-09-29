@@ -18,7 +18,8 @@
     "database/migrations/20260925_fix_release_channel_trigger_search_path.sql": "06fa91818f227019cff5f53938cf71891d737557",
     "database/migrations/20260925_repair_release_channel_access_mode.sql": "315d25b96d357e5240b2efa40f35975a6bbb857a",
     "database/migrations/20260928020000_release_lifecycle_states.sql": "03f849c9917ab41af3773e0b00d0e533192fe0c4",
-    "database/migrations/20260928_allow_admin_multiple_customer_licenses.sql": "2992a40554777f1d42796c13b91199424bf7475e"
+    "database/migrations/20260928_allow_admin_multiple_customer_licenses.sql": "2992a40554777f1d42796c13b91199424bf7475e",
+    "database/migrations/20260929_official_api_connections.sql": "cf5f854ae44bc028c34ff6028127f278012a39df"
   },
   "remote_migrations": [
     {
