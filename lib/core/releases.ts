@@ -533,8 +533,8 @@ export async function publishRelease(id:string,actorUserId?:string|null,actor?:s
    }
 
    archivedHistory=(await client.query(
-    "update releases set archived_at=coalesce(archived_at,now()),archived_by=coalesce(archived_by,$4::uuid) where product_id=$1 and channel=$2 and release_type='base' and status='superseded' and archived_at is null and ($5::uuid is null or id<>$5::uuid) returning id,version,published_at,archived_at",
-    [row.product_id,row.channel,'base',actorUserId??null,immediatePrevious?.id??null]
+    "update releases set archived_at=coalesce(archived_at,now()),archived_by=coalesce(archived_by,$3::uuid) where product_id=$1 and channel=$2 and release_type='base' and status='superseded' and archived_at is null and ($4::uuid is null or id<>$4::uuid) returning id,version,published_at,archived_at",
+    [row.product_id,row.channel,actorUserId??null,immediatePrevious?.id??null]
    )).rows;
   }
 
