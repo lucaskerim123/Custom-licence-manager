@@ -45,10 +45,6 @@ export async function POST(request:Request){
 
   if(phase==='authorize'&&action==='base_reinstall'&&releaseLicense){
     if(!activation)return NextResponse.json({ok:false,code:'BASE_REINSTALL_ACTIVATION_NOT_FOUND'},{status:409});
-    if(activation.status!=='released'){
-      await setInstallationStatus(activation.id,'released',null,'orbitfs-base-reinstall');
-      details.activationStatus='released';
-    }
     const metadata=license.metadata&&typeof license.metadata==='object'?{...license.metadata}:{};
     metadata.base_reinstall_rotation_required={
       installationId,
@@ -59,6 +55,10 @@ export async function POST(request:Request){
       channel:details.channel||null,
     };
     await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
+    if(activation.status!=='released'){
+      await setInstallationStatus(activation.id,'released',null,'orbitfs-base-reinstall');
+      details.activationStatus='released';
+    }
   }
 
   if(phase==='completed'&&action==='uninstall'&&releaseLicense&&activation&&activation.status!=='released'){
