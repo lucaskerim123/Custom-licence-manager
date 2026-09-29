@@ -174,7 +174,10 @@ export async function rotateLicense(id:string,actorUserId?:string|null,actor?:st
     const metadata=current.metadata&&typeof current.metadata==='object'?{...current.metadata}:{};
     const reinstallRotation=metadata.base_reinstall_rotation_required&&typeof metadata.base_reinstall_rotation_required==='object'?metadata.base_reinstall_rotation_required:null;
     if(reinstallRotation){
-      metadata.base_reinstall_last_rotation={...reinstallRotation,rotatedAt:new Date().toISOString(),newKeyLast4:key.slice(-4)};
+      const rotatedAt=new Date().toISOString();
+      metadata.base_reinstall_last_rotation={...reinstallRotation,rotatedAt,newKeyLast4:key.slice(-4)};
+      const reinstallState=metadata.base_reinstall_state&&typeof metadata.base_reinstall_state==='object'?metadata.base_reinstall_state:{};
+      metadata.base_reinstall_state={...reinstallState,state:'waiting_new_key',rotationCompletedAt:rotatedAt,newKeyLast4:key.slice(-4),lastError:null};
       delete metadata.base_reinstall_rotation_required;
     }
     const result=(await client.query(`update licenses set license_key_hash=$1,license_key_last4=$2,metadata=$3 where id=$4 returning id,status,expires_at,customer_external_id,customer_override`,[hashKey(key),key.slice(-4),JSON.stringify(metadata),id])).rows[0];
