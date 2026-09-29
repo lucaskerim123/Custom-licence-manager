@@ -7,8 +7,8 @@ import PageHeader from '../components/PageHeader';
 export const dynamic='force-dynamic';
 
 const clientMap={
- license_manager:['billing_store','dev_panel','release_builder'],
- license_runtime:['v1_base','v1_engine','billing_store'],
+ license_manager:{primary:['billing_store','dev_panel','release_builder'],fallback:['billing_store','dev_panel']},
+ license_runtime:{primary:['v1_base','v1_engine','billing_store'],fallback:['v1_base','v1_engine','billing_store']},
 } as const;
 
 async function saveConnection(formData:FormData){
@@ -16,6 +16,7 @@ async function saveConnection(formData:FormData){
  const user=await requireUser();
  if(!['owner','admin'].includes(user.role))return;
  const service=String(formData.get('service_key')||'license_manager') as keyof typeof clientMap;
+ const role=String(formData.get('connection_role')||'primary')==='fallback'?'fallback':'primary';
  const timeout=Math.min(120000,Math.max(1000,Number(formData.get('timeout_ms')||8000)));
  const cache=Math.min(3600,Math.max(0,Number(formData.get('cache_seconds')||0)));
  await saveOfficialApiConnection({
@@ -23,9 +24,11 @@ async function saveConnection(formData:FormData){
   service_key:service,
   label:String(formData.get('label')||'').trim(),
   base_url:String(formData.get('base_url')||'').trim(),
-  allowed_clients:[...(clientMap[service]||[])],
+  allowed_clients:[...(clientMap[service]?.[role]||[])],
   enabled:formData.get('enabled')==='on',
   priority:Number(formData.get('priority')||100),
+  connection_role:role,
+  failover_enabled:role==='fallback'&&formData.get('failover_enabled')==='on',
   settings:{
    timeout_ms:timeout,
    cache_seconds:cache,
@@ -43,7 +46,7 @@ export default async function ApiConnections(){
  const active=rows.filter((row:any)=>row.enabled).length;
 
  return <div className="shell"><SideNav active="api-connections"/><main className="main">
-  <PageHeader eyebrow="System / Official integrations" title="API Connections" description="License Manager is the trust authority for official OrbitFS API endpoints. Downstream systems may only select an exact enabled URL published here." badge={active?active+' ACTIVE':'REGISTRY EMPTY'}/>
+  <PageHeader eyebrow="System / Official integrations" title="API Connections" description="License Manager is the trust authority for primary endpoints. Registered fallback endpoints are availability-only limp mode and can never create authority decisions." badge={active?active+' ACTIVE':'REGISTRY EMPTY'}/>
 
   <div className="grid dashboard-metrics api-metrics">
    <div className="card metric-card"><div className="metric-icon icon-blue">⌁</div><div><span className="metric-label">Official endpoints</span><strong className="metric">{rows.length}</strong><small>{active} enabled</small></div></div>
@@ -57,8 +60,8 @@ export default async function ApiConnections(){
     {rows.map((row:any)=>{
      const settings=row.settings&&typeof row.settings==='object'?row.settings:{};
      return <form action={saveConnection} className="card section" key={row.id}>
-      <input type="hidden" name="id" value={row.id}/><input type="hidden" name="service_key" value={row.service_key}/><input type="hidden" name="auth_mode" value={settings.auth_mode||''}/>
-      <div className="section-head"><div><div className="eyebrow">{String(row.service_key).replaceAll('_',' ')}</div><h2>{row.label}</h2><p className="muted">{row.allowed_clients?.join(' · ')||'No clients assigned'}</p></div><span className={row.enabled?'badge':'header-badge'}>{row.enabled?'ENABLED':'DISABLED'}</span></div>
+      <input type="hidden" name="id" value={row.id}/><input type="hidden" name="service_key" value={row.service_key}/><input type="hidden" name="connection_role" value={row.connection_role||'primary'}/><input type="hidden" name="auth_mode" value={settings.auth_mode||''}/>
+      <div className="section-head"><div><div className="eyebrow">{String(row.service_key).replaceAll('_',' ')} · {String(row.connection_role||'primary').toUpperCase()}</div><h2>{row.label}</h2><p className="muted">{row.allowed_clients?.join(' · ')||'No clients assigned'}</p></div><span className={row.enabled?'badge':'header-badge'}>{row.enabled?(row.connection_role==='fallback'?'LIMP FALLBACK':'ENABLED'):'DISABLED'}</span></div>
       <div className="policy-grid">
        <label><span>Label</span><input className="input" name="label" defaultValue={row.label} readOnly={!canManage}/></label>
        <label style={{gridColumn:'1 / -1'}}><span>Official API URL</span><input className="input mono" name="base_url" defaultValue={row.base_url} readOnly={!canManage}/><small className="muted">Must be HTTPS on an OrbitFS-controlled incendiarynetworks.cc host and use the exact service path.</small></label>
@@ -66,7 +69,8 @@ export default async function ApiConnections(){
        <label><span>Timeout</span><div className="number-input"><input className="input" name="timeout_ms" type="number" min="1000" max="120000" defaultValue={Number(settings.timeout_ms||8000)} readOnly={!canManage}/><b>ms</b></div></label>
        <label><span>Cache</span><div className="number-input"><input className="input" name="cache_seconds" type="number" min="0" max="3600" defaultValue={Number(settings.cache_seconds||0)} readOnly={!canManage}/><b>sec</b></div></label>
        <label><span>Health path</span><input className="input mono" name="health_path" defaultValue={String(settings.health_path||'')} readOnly={!canManage}/></label>
-       {canManage&&<label className="toggle-line"><input type="checkbox" name="enabled" defaultChecked={Boolean(row.enabled)}/><span><b>Endpoint enabled</b><small>Only enabled endpoints are offered to OrbitFS clients.</small></span></label>}
+       {row.connection_role==='fallback'&&<label className="toggle-line"><input type="checkbox" name="failover_enabled" defaultChecked={Boolean(row.failover_enabled)} disabled={!canManage}/><span><b>Automatic limp failover</b><small>Clients may use this endpoint only after primary transport failure. It never becomes authority.</small></span></label>}
+       {canManage&&<label className="toggle-line"><input type="checkbox" name="enabled" defaultChecked={Boolean(row.enabled)}/><span><b>Endpoint enabled</b><small>Only enabled endpoints are offered to approved OrbitFS clients.</small></span></label>}
        {canManage&&<div className="policy-submit"><button className="button">Save official endpoint</button></div>}
       </div>
      </form>;
@@ -79,12 +83,14 @@ export default async function ApiConnections(){
    <summary className="collapsible-summary"><div><div className="eyebrow">Additional official endpoint</div><h2>Add fallback / replacement API</h2><p className="muted">Use this only for an OrbitFS-controlled incendiarynetworks.cc API. Downstream clients still select only enabled exact registry entries.</p></div><span className="collapse-chevron">⌄</span></summary>
    <div className="collapsible-body"><form action={saveConnection} className="policy-grid">
     <label><span>Service</span><select className="input" name="service_key" defaultValue="license_manager"><option value="license_manager">License Manager control API</option><option value="license_runtime">Licence runtime API</option></select></label>
-    <label><span>Label</span><input className="input" name="label" placeholder="Secondary OrbitFS API" required/></label>
-    <label style={{gridColumn:'1 / -1'}}><span>Official API URL</span><input className="input mono" name="base_url" placeholder="https://api.incendiarynetworks.cc/api/v1" required/></label>
+    <label><span>Role</span><select className="input" name="connection_role" defaultValue="fallback"><option value="primary">Primary authority</option><option value="fallback">Limp-mode fallback</option></select></label>
+    <label><span>Label</span><input className="input" name="label" placeholder="OrbitFS fallback API" required/></label>
+    <label style={{gridColumn:'1 / -1'}}><span>Official API URL</span><input className="input mono" name="base_url" placeholder="https://orbitfs-fallback.stubengine.com/api/v1" required/></label>
     <label><span>Priority</span><input className="input" name="priority" type="number" min="0" max="10000" defaultValue="100"/></label>
     <label><span>Timeout</span><div className="number-input"><input className="input" name="timeout_ms" type="number" min="1000" max="120000" defaultValue="10000"/><b>ms</b></div></label>
     <label><span>Cache</span><div className="number-input"><input className="input" name="cache_seconds" type="number" min="0" max="3600" defaultValue="0"/><b>sec</b></div></label>
     <label><span>Health path</span><input className="input mono" name="health_path" defaultValue="/health"/></label>
+    <label className="toggle-line"><input type="checkbox" name="failover_enabled" defaultChecked/><span><b>Automatic limp failover</b><small>Used only when the selected primary has a transport outage.</small></span></label>
     <label className="toggle-line"><input type="checkbox" name="enabled" defaultChecked/><span><b>Endpoint enabled</b><small>Immediately available to approved OrbitFS clients.</small></span></label>
     <div className="policy-submit"><button className="button">Add official endpoint</button></div>
    </form></div>
