@@ -64,8 +64,8 @@ export async function POST(request:Request){
   if(updateRollback){
     if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
   }else if(action==='redeploy'){
-    if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
-    if(!installationId||!currentBase||String(currentBase.release_id||'')!==String(release.id))return NextResponse.json({ok:false,code:'RELEASE_NOT_CURRENT_BASE'},{status:409});
+    // Redeploy means deploy the channel's currently published Base, not replay the installation's old release id.
+    if(!publishedApproved)return NextResponse.json({ok:false,code:'RELEASE_NOT_DEPLOYABLE'},{status:409});
   }else if(action==='rollback'){
     if(release.review_status!=='approved'||!installationId)return NextResponse.json({ok:false,code:'BASE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
     const prior=(await db().query(
