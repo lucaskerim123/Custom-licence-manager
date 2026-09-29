@@ -3,7 +3,7 @@ import {integrationAuthorized} from '../../../../../lib/auth';
 import {db} from '../../../../../lib/db';
 import {setInstallationStatus} from '../../../../../lib/core/licenses';
 
-const ACTIONS=new Set(['undeploy','uninstall']);
+const ACTIONS=new Set(['undeploy','uninstall','base_reinstall']);
 const PHASES=new Set(['plan','authorize','completed','failed']);
 
 export async function POST(request:Request){
@@ -36,6 +36,9 @@ export async function POST(request:Request){
     deploymentUrl:body?.deploymentUrl||body?.deployment_url||activation?.last_deployment_url||null,
     provider:body?.provider||'vercel',
     reason:body?.reason||null,
+    targetReleaseId:body?.targetReleaseId||body?.target_release_id||null,
+    targetVersion:body?.targetVersion||body?.target_version||null,
+    channel:body?.channel||body?.release_channel||null,
     result:body?.result&&typeof body.result==='object'?body.result:null,
     error:body?.error||null,
   };
