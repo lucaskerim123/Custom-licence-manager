@@ -50,8 +50,9 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
           message:'Permanent deletion destroys rollback history. Archive or supersede releases instead unless deliberate deletion is explicitly confirmed.'
         },{status:409});
       }
-      if(release.status==='published'||(!release.archived_at&&!(release.status==='draft'&&!release.published_at))){
-        return NextResponse.json({error:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',code:'ACTIVE_OR_UNARCHIVED_RELEASE_DELETE_FORBIDDEN',status:release.status},{status:409});
+      const everPublished=release.status==='published'||Boolean(release.published_at);
+      if(everPublished){
+        return NextResponse.json({error:'EVER_PUBLISHED_RELEASE_DELETE_FORBIDDEN',code:'EVER_PUBLISHED_RELEASE_DELETE_FORBIDDEN',status:release.status,message:'Published release history is retained for rollback and audit. Only never-published release attempts can be permanently deleted.'},{status:409});
       }
       const deleted=(await db().query('delete from releases where id=$1 returning *',[id])).rows[0];
       await db().query("insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'release.delete','release',$2,$3)",[`api:${auth.name}`,id,JSON.stringify({product_id:deleted.product_id,version:deleted.version,channel:deleted.channel,release_type:deleted.release_type,status:deleted.status,review_status:deleted.review_status,created_at:deleted.created_at,published_at:deleted.published_at??null,permanent:true,confirmation})]);
