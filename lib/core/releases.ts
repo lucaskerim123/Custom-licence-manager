@@ -458,14 +458,12 @@ async function validateUpdateBaseCompatibility(row:any){
   order by r.published_at desc nulls last,r.created_at desc`,[baseChannel])).rows;
  const compatible=rows.filter((base:any)=>{
    const comparison=compareOrbitReleaseVersions(String(base.version||''),minimumVersion);
-   const m=base.manifest&&typeof base.manifest==='object'?base.manifest:{};
-   const schema=String(m.databaseSchemaSha256||m.releaseInfo?.databaseSchemaSha256||'');
-   return comparison!==null&&comparison>=0&&/^[a-f0-9]{64}$/i.test(schema);
+   return comparison!==null&&comparison>=0;
  }).sort((a:any,b:any)=>compareOrbitReleaseVersions(String(b.version||''),String(a.version||''))??0);
  const base=compatible[0];
  if(!base){
    const available=rows.map((candidate:any)=>String(candidate.version||'')).filter(Boolean);
-   return {key:'minimum_base',ok:false,message:`No published + approved Base at or above minimum ${minimumVersion} exists in channel ${baseChannel} with the required customer DB snapshot contract.${available.length?` Available published Base versions: ${available.join(', ')}.`:''}`};
+   return {key:'minimum_base',ok:false,message:`No published + approved Base at or above minimum ${minimumVersion} exists in channel ${baseChannel}.${available.length?` Available published Base versions: ${available.join(', ')}.`:''}`};
  }
  return {key:'minimum_base',ok:true,message:`Minimum Base ${minimumVersion} is satisfied by published Base ${base.version} in ${baseChannel}.`};
 }
