@@ -4,7 +4,7 @@ import {db} from '../../../../../lib/db';
 import {setInstallationStatus} from '../../../../../lib/core/licenses';
 
 const ACTIONS=new Set(['undeploy','uninstall','base_reinstall']);
-const PHASES=new Set(['plan','authorize','completed','failed']);
+const PHASES=new Set(['plan','authorize','waiting_license','completed','failed']);
 
 export async function POST(request:Request){
   const actor=await integrationAuthorized(request,'deployment.write');
