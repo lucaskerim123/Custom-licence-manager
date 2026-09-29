@@ -4,7 +4,10 @@ import {db} from '../../../../../lib/db';
 import {setInstallationStatus} from '../../../../../lib/core/licenses';
 
 const ACTIONS=new Set(['undeploy','uninstall','base_reinstall']);
-const PHASES=new Set(['plan','authorize','waiting_license','completed','failed']);
+const PHASES=new Set(['plan','authorize','waiting_license','status','completed','failed']);
+
+function objectValue(value:any){return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}
+const now=()=>new Date().toISOString();
 
 export async function POST(request:Request){
   const actor=await integrationAuthorized(request,'deployment.write');
@@ -43,22 +46,83 @@ export async function POST(request:Request){
     error:body?.error||null,
   };
 
+  let metadata=objectValue(license.metadata);
+  let baseReinstall=objectValue(metadata.base_reinstall_state);
+  let rotationRequired=objectValue(metadata.base_reinstall_rotation_required);
+
+  if(action==='base_reinstall'&&phase==='status'){
+    return NextResponse.json({
+      ok:true,
+      authority:'orbitfs-license-master-v2',
+      action,
+      phase,
+      activation:activation?{id:activation.id,status:activation.status,installationId:activation.installation_id}:null,
+      baseReinstall:Object.keys(baseReinstall).length?baseReinstall:null,
+      rotationRequired:Object.keys(rotationRequired).length?rotationRequired:null,
+    });
+  }
+
   if(phase==='authorize'&&action==='base_reinstall'&&releaseLicense){
     if(!activation)return NextResponse.json({ok:false,code:'BASE_REINSTALL_ACTIVATION_NOT_FOUND'},{status:409});
-    const metadata=license.metadata&&typeof license.metadata==='object'?{...license.metadata}:{};
-    metadata.base_reinstall_rotation_required={
+    const targetReleaseId=String(details.targetReleaseId||'').trim();
+    const targetVersion=String(details.targetVersion||'').trim();
+    const channel=String(details.channel||'').trim().toLowerCase();
+    if(!targetReleaseId||!targetVersion||!channel)return NextResponse.json({ok:false,code:'BASE_REINSTALL_TARGET_REQUIRED'},{status:400});
+    const requestedAt=now();
+    rotationRequired={
       installationId,
-      requestedAt:new Date().toISOString(),
+      requestedAt,
       previousKeyLast4:license.license_key_last4||null,
-      targetReleaseId:details.targetReleaseId||null,
-      targetVersion:details.targetVersion||null,
-      channel:details.channel||null,
+      targetReleaseId,
+      targetVersion,
+      channel,
     };
+    baseReinstall={
+      state:'waiting_license_rotation',
+      installationId,
+      licenseId,
+      startedAt:requestedAt,
+      previousKeyLast4:license.license_key_last4||null,
+      targetReleaseId,
+      targetVersion,
+      channel,
+      previousProjectId:body?.projectId||body?.project_id||null,
+      previousDeploymentId:details.deploymentId||null,
+      rotationCompletedAt:null,
+      newKeyLast4:null,
+      lastError:null,
+    };
+    metadata={...metadata,base_reinstall_rotation_required:rotationRequired,base_reinstall_state:baseReinstall};
     await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
     if(activation.status!=='released'){
       await setInstallationStatus(activation.id,'released',null,'orbitfs-base-reinstall');
       details.activationStatus='released';
     }
+  }
+
+  if(phase==='waiting_license'&&action==='base_reinstall'){
+    if(!Object.keys(baseReinstall).length)return NextResponse.json({ok:false,code:'BASE_REINSTALL_STATE_NOT_FOUND'},{status:409});
+    baseReinstall={...baseReinstall,state:Object.keys(rotationRequired).length?'waiting_license_rotation':'waiting_new_key',waitingSince:baseReinstall.waitingSince||now(),result:details.result||baseReinstall.result||null};
+    metadata={...metadata,base_reinstall_state:baseReinstall};
+    await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
+  }
+
+  if(phase==='completed'&&action==='base_reinstall'){
+    const completedAt=now();
+    const completed={...baseReinstall,state:'completed',completedAt,result:details.result||null,targetReleaseId:details.targetReleaseId||baseReinstall.targetReleaseId||null,targetVersion:details.targetVersion||baseReinstall.targetVersion||null,channel:details.channel||baseReinstall.channel||null};
+    metadata={...metadata,base_reinstall_last:completed};
+    delete metadata.base_reinstall_state;
+    delete metadata.base_reinstall_rotation_required;
+    baseReinstall=completed;
+    rotationRequired={};
+    await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
+  }
+
+  if(phase==='failed'&&action==='base_reinstall'){
+    const failedAt=now();
+    baseReinstall={...baseReinstall,state:'failed',failedAt,lastError:String(details.error||'Base reinstall failed'),result:details.result||null,targetReleaseId:details.targetReleaseId||baseReinstall.targetReleaseId||null,targetVersion:details.targetVersion||baseReinstall.targetVersion||null,channel:details.channel||baseReinstall.channel||null};
+    metadata={...metadata,base_reinstall_state:baseReinstall};
+    await db().query('update licenses set metadata=$2 where id=$1',[licenseId,JSON.stringify(metadata)]);
   }
 
   if(phase==='completed'&&action==='uninstall'&&releaseLicense&&activation&&activation.status!=='released'){
@@ -69,7 +133,7 @@ export async function POST(request:Request){
   await db().query(
     `insert into audit_events(actor,action,resource_type,resource_id,details)
      values($1,$2,'installation',$3,$4)`,
-    [`api:${actor.name||actor.actor||'deployer'}`,`installation.lifecycle.${action}.${phase}`,activation?.id||licenseId,JSON.stringify(details)],
+    [`api:${actor.name||actor.actor||'deployer'}`,`installation.lifecycle.${action}.${phase}`,activation?.id||licenseId,JSON.stringify({...details,baseReinstall:Object.keys(baseReinstall).length?baseReinstall:null})],
   );
 
   return NextResponse.json({
@@ -80,5 +144,7 @@ export async function POST(request:Request){
     authorized:phase==='authorize'||phase==='plan',
     activation:activation?{id:activation.id,status:details.activationStatus,installationId:activation.installation_id}:null,
     releaseLicense,
+    baseReinstall:Object.keys(baseReinstall).length?baseReinstall:null,
+    rotationRequired:Object.keys(rotationRequired).length?rotationRequired:null,
   });
 }
