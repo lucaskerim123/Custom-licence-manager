@@ -85,7 +85,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   }
 
   const rotationRequired=license.metadata&&typeof license.metadata==='object'&&license.metadata.base_reinstall_rotation_required&&typeof license.metadata.base_reinstall_rotation_required==='object'?license.metadata.base_reinstall_rotation_required:null;
-  if(rotationRequired){
+  if(rotationRequired&&licenseEligible){
     const components=runtimeComponentStates(String(license.component),entitledComponents,false);
     return{valid:false,code:'LICENSE_ROTATION_REQUIRED' as const,status:409,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,runtime_policy,components,installation:{installation_id:input.installationId||null,status:bindingStatus,locked:false}};
   }
