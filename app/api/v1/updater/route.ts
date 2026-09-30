@@ -41,9 +41,19 @@ export async function GET(request:Request){
 
     if(!release)return NextResponse.json({ok:false,code:'RELEASE_NOT_FOUND'},{status:404});
     if(String(release.product)!==product)return NextResponse.json({ok:false,code:'RELEASE_PRODUCT_MISMATCH'},{status:409});
-    if(release.status!=='published'||release.review_status!=='approved'||release.archived_at)return NextResponse.json({ok:false,code:'RELEASE_NOT_PUBLISHED'},{status:409});
+    if(rollback){
+      if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
+      if(!installationId||!validation.license_id)return NextResponse.json({ok:false,code:'INSTALLATION_ID_REQUIRED'},{status:400});
+      const prior=(await db().query(
+        "select 1 from deployment_events where license_id=$1 and installation_id=$2 and release_id=$3 and phase='completed' and (action='update' or (action='rollback' and coalesce(details->>'rollbackScope','')='update')) limit 1",
+        [validation.license_id,installationId,release.id]
+      )).rows[0];
+      if(!prior)return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_TARGET_NOT_INSTALLED'},{status:409});
+    }else if(release.status!=='published'||release.review_status!=='approved'||release.archived_at){
+      return NextResponse.json({ok:false,code:'RELEASE_NOT_PUBLISHED'},{status:409});
+    }
     if(String(release.channel)!==channel)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_MISMATCH'},{status:409});
-    if(channel!=='stable'){
+    if(channel!=='stable'&&!rollback){
       const policy=(await db().query('select access_mode,enabled from release_channels where channel=$1 limit 1',[channel])).rows[0];
       if(!policy?.enabled)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_DISABLED'},{status:409});
       if(policy.access_mode==='closed'){
