@@ -5,6 +5,39 @@ import {recordInstallationCheckIn} from '../../../../lib/core/licenses';
 import {compareOrbitReleaseVersions} from '../../../../lib/core/versioning';
 
 function requestIp(request:Request){return request.headers.get('x-real-ip')?.trim()||request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()||null;}
+
+export async function GET(request:Request){
+  const actor=await integrationAuthorized(request,'deployment.read');
+  if(!actor)return NextResponse.json({ok:false,code:'UNAUTHORIZED'},{status:401});
+  const u=new URL(request.url);
+  const installationId=String(u.searchParams.get('installation_id')||u.searchParams.get('installationId')||'').trim();
+  const licenseId=String(u.searchParams.get('license_id')||u.searchParams.get('licenseId')||'').trim();
+  if(!installationId)return NextResponse.json({ok:false,code:'INSTALLATION_ID_REQUIRED'},{status:400});
+  const params:any[]=[installationId];
+  const licenseFilter=licenseId?' and a.license_id=$2':'';
+  if(licenseId)params.push(licenseId);
+  const activation=(await db().query(
+    `select a.id,a.license_id,a.installation_id,a.status,a.product_version,a.first_seen_at,a.last_seen_at,a.last_provider,a.last_region,a.last_deployment_id,a.last_deployment_url,a.last_deployment_status,a.last_operation,a.deployment_count,a.current_components,l.status license_status,l.expires_at license_expires_at,p.slug product
+     from activations a
+     join licenses l on l.id=a.license_id
+     join products p on p.id=l.product_id
+     where a.installation_id=$1${licenseFilter}
+     order by a.last_seen_at desc nulls last,a.created_at desc
+     limit 1`,params
+  )).rows[0]||null;
+  if(!activation)return NextResponse.json({ok:false,code:'INSTALLATION_NOT_FOUND'},{status:404});
+  const events=(await db().query(
+    `select e.id,e.release_id,e.action,e.phase,e.product,e.product_version,e.previous_version,e.deployment_id,e.deployment_url,e.project_id,e.project_name,e.provider,e.region,e.platform,e.hostname,e.client,e.client_version,e.details,e.created_at,r.version release_version,r.channel release_channel,r.release_type,r.status release_status,r.review_status
+     from deployment_events e
+     left join releases r on r.id=e.release_id
+     where e.installation_id=$1 and e.license_id=$2
+     order by e.created_at desc
+     limit 50`,[installationId,activation.license_id]
+  )).rows;
+  const completedBase=events.find((e:any)=>e.phase==='completed'&&['deploy','base_update','redeploy','rollback'].includes(String(e.action))&&String(e.details?.rollbackScope||'base')==='base')||null;
+  const completedUpdate=events.find((e:any)=>e.phase==='completed'&&e.action==='update')||null;
+  return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',installation:{...activation,current_base:completedBase,current_update:completedUpdate,recent_events:events}});
+}
 export async function POST(request:Request){
   const actor=await integrationAuthorized(request,'deployment.write');
   if(!actor)return NextResponse.json({ok:false,code:'UNAUTHORIZED'},{status:401});
