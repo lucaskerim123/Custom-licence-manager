@@ -19,7 +19,9 @@ export async function GET(request:Request){
     const channel=String(url.searchParams.get('channel')||'stable').trim().toLowerCase();
     const type=String(url.searchParams.get('type')||'update').trim().toLowerCase();
     const engineOnly=url.searchParams.get('engine')==='1';
+    const rollback=url.searchParams.get('rollback')==='1';
     if(!['base','update'].includes(type))return NextResponse.json({ok:false,code:'INVALID_RELEASE_TYPE'},{status:400});
+    if(rollback&&(!releaseId||type!=='update'))return NextResponse.json({ok:false,code:'ROLLBACK_RELEASE_REQUIRED'},{status:400});
 
     const licenseKey=request.headers.get('x-license-key')?.trim()||'';
     if(!licenseKey)return NextResponse.json({ok:false,code:'LICENSE_KEY_REQUIRED'},{status:401});
