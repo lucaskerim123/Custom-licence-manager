@@ -15,6 +15,7 @@ assert(bootstrap.includes("engine.source.authorized"),"Historical bootstrap comm
 assert(bootstrap.includes("Pinned Engine commit was never authorized for this installation"),"Arbitrary private repository commits must not be customer-selectable.");
 assert(deployer.includes("const publishedApproved=release.status==='published'&&release.review_status==='approved'"),"Deployment authorization must enforce published releases for normal updates.");
 assert(deployer.includes("if(updateRollback)"),"Deployment authority must have an explicit Update rollback path.");
-console.log("License Manager Engine update authority checks passed.");
-
+assert(updater.includes("entitledReleaseComponents"),"Shared Engine delivery must distinguish entitled targets from dormant bundled components.");
+assert(deployer.includes("entitledTargets"),"Deployment authorization must enforce entitlement intersection for Engine-only updates.");
 assert(validation.includes("UPDATE_RELEASE"),"Legacy bootstrap branch identities must never be coerced into UUID release ids.");
+console.log("License Manager Engine update authority checks passed.");
