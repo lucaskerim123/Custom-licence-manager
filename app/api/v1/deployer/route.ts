@@ -78,7 +78,7 @@ export async function POST(request:Request){
   if(!release.checksum)return NextResponse.json({ok:false,code:'RELEASE_ARTIFACT_NOT_VERIFIED'},{status:409});
   const licenseId=String(body?.licenseId||body?.license_id||'').trim();
   if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED',error:'No authoritative licence id was supplied for this installation.'},{status:403});
-  const license=(await db().query(`select id,status,expires_at from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
+  const license=(await db().query(`select id,status,expires_at,metadata from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
   if(!license)return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence does not belong to this release product.'},{status:403});
   if(license.status!=='active')return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:`The installation licence is ${license.status||'inactive'}; an active licence is required.`},{status:403});
   if(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence has expired.'},{status:403});
@@ -96,6 +96,18 @@ export async function POST(request:Request){
   }
 
   const publishedApproved=release.status==='published'&&release.review_status==='approved'&&!release.archived_at;
+  if(action==='update'){
+    const manifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
+    const targets=Array.isArray(manifest.components)?manifest.components.map((value:any)=>String(value||'').trim().toLowerCase()).filter(Boolean):[];
+    const engineTargets=targets.filter((component:string)=>['apex','mcp','studio'].includes(component));
+    const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'?license.metadata.license_policy:{};
+    const entitled=policy.components&&typeof policy.components==='object'?policy.components:{};
+    const entitledTargets=engineTargets.filter((component:string)=>Boolean(entitled['orbitfs_'+component]));
+    const hasBaseTarget=targets.some((component:string)=>['base','orbitfs_base','core'].includes(component));
+    if(engineTargets.length&&!hasBaseTarget&&!entitledTargets.length){
+      return NextResponse.json({ok:false,code:'RELEASE_COMPONENT_NOT_ENTITLED',components:engineTargets},{status:403});
+    }
+  }
   if(updateRollback){
     if(release.review_status!=='approved')return NextResponse.json({ok:false,code:'UPDATE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
   }else if(action==='redeploy'){
