@@ -137,14 +137,14 @@ export async function POST(request:Request){
     }
   }
   const releaseManifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
-  const releaseComponents=[...new Set((Array.isArray(releaseManifest.components)?releaseManifest.components:[])
+  const releaseComponents:string[]=[...new Set<string>((Array.isArray(releaseManifest.components)?releaseManifest.components:[])
     .map((value:any)=>String(value||'').trim().toLowerCase())
     .filter((value:string)=>['base','apex','mcp','studio'].includes(value)))];
   const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'
     ?license.metadata.license_policy:{};
   const entitlementMap=policy.components&&typeof policy.components==='object'?policy.components:{};
   const licenseComponent=String(license.component||'').trim().toLowerCase();
-  const entitledComponents=['base','apex','mcp','studio'].filter((component)=>{
+  const entitledComponents:string[]=['base','apex','mcp','studio'].filter((component:string)=>{
     if(component==='base')return licenseComponent==='orbitfs_base'||Boolean(entitlementMap.orbitfs_base);
     return Boolean(entitlementMap['orbitfs_'+component]);
   });
