@@ -44,9 +44,11 @@ export async function POST(request:Request){
   if(requestedChannel&&requestedChannel!==String(release.channel||'').trim().toLowerCase())return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_ACTION_MISMATCH'},{status:409});
   if(!release.checksum)return NextResponse.json({ok:false,code:'RELEASE_ARTIFACT_NOT_VERIFIED'},{status:409});
   const licenseId=String(body?.licenseId||body?.license_id||'').trim();
-  if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED'},{status:403});
+  if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED',error:'No authoritative licence id was supplied for this installation.'},{status:403});
   const license=(await db().query(`select id,status,expires_at from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
-  if(!license||license.status!=='active'||(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now()))return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE'},{status:403});
+  if(!license)return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence does not belong to this release product.'},{status:403});
+  if(license.status!=='active')return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:`The installation licence is ${license.status||'inactive'}; an active licence is required.`},{status:403});
+  if(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence has expired.'},{status:403});
 
   let activation:any=null;
   let currentBase:any=null;
@@ -98,7 +100,7 @@ export async function POST(request:Request){
     if(!policy?.enabled)return NextResponse.json({ok:false,code:'RELEASE_CHANNEL_DISABLED'},{status:409});
     if(policy.access_mode==='closed'){
       const access=(await db().query('select 1 from release_channel_access where license_id=$1 and channel=$2 and (expires_at is null or expires_at>now()) limit 1',[licenseId,channel])).rows[0];
-      if(!access)return NextResponse.json({ok:false,code:'LICENSE_CHANNEL_ACCESS_DENIED'},{status:403});
+      if(!access)return NextResponse.json({ok:false,code:'LICENSE_CHANNEL_ACCESS_DENIED',error:`This licence is not assigned to the ${channel} release channel.`},{status:403});
     }
   }
   const rawComponents=body?.componentState??body?.components;
