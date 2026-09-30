@@ -60,6 +60,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ valid: false, code: 'INSTALLATION_ID_REQUIRED' }, { status: 400 });
       }
 
+      const suppliedReleaseId = String(body?.release_id ?? body?.releaseId ?? '').trim();
+      const engineBranchReleaseId = /^github:lucaskerim123\\/V1-vercel-engine@[a-f0-9]{40}$/i.test(suppliedReleaseId) ? suppliedReleaseId : null;
+      if (suppliedReleaseId && !engineBranchReleaseId && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(suppliedReleaseId)) {
+        return NextResponse.json({ valid: false, code: 'INVALID_RELEASE_ID' }, { status: 400 });
+      }
+
       await recordInstallationCheckIn({
         licenseId: String(result.license_id),
         installationId,
@@ -82,10 +88,7 @@ export async function POST(request: Request) {
           body?.previous_version ?? body?.previousVersion
             ? String(body?.previous_version ?? body?.previousVersion)
             : null,
-        releaseId:
-          body?.release_id ?? body?.releaseId
-            ? String(body?.release_id ?? body?.releaseId)
-            : null,
+        releaseId: engineBranchReleaseId ? null : suppliedReleaseId || null,
         deploymentId:
           body?.deployment_id ?? body?.deploymentId
             ? String(body?.deployment_id ?? body?.deploymentId)
@@ -113,7 +116,10 @@ export async function POST(request: Request) {
             ? String(body?.client_version ?? body?.clientVersion)
             : null,
         customerIdentity: body?.customer_identity ?? body?.customerIdentity ?? null,
-        details: body?.details && typeof body.details === 'object' ? body.details : {},
+        details: {
+          ...(body?.details && typeof body.details === 'object' && !Array.isArray(body.details) ? body.details : {}),
+          ...(engineBranchReleaseId ? { engineBranchReleaseId } : {}),
+        },
       });
     }
 
