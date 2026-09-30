@@ -53,15 +53,25 @@ export async function GET(request:Request){
     if(String(release.release_type)!==type)return NextResponse.json({ok:false,code:'RELEASE_TYPE_MISMATCH'},{status:409});
 
     const manifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
-    const releaseComponents=Array.isArray(manifest.components)?manifest.components.map((x:any)=>String(x||'').toLowerCase()):[];
-    // Update bundles are shared system payloads. Component entitlements control
-    // runtime feature access, not whether an otherwise valid Base licence may
-    // receive the common Update artifact. Blocking the entire artifact when it
-    // contains disabled optional components causes entitled installations to
-    // fail updates before the runtime entitlement gates can do their job.
-    const descriptor={id:release.id,version:release.version,product:release.product,releaseType:release.release_type,channel:release.channel,status:release.status,reviewStatus:release.review_status,publishedAt:release.published_at||null,sourceRepo:release.source_repo,sourceRef:release.source_ref,sourceCommit:release.source_sha,checksum:release.checksum,artifactSha256:release.checksum,artifactName:release.artifact_name,fileCount:Number(manifest.fileCount||0),components:Array.isArray(manifest.components)?manifest.components:[],minimumBaseVersion:manifest.minimumBaseVersion||manifest.minimum_version||null,minimumEngineDeployerProtocol:Number(manifest.minimumEngineDeployerProtocol||1),checkpointRequired:manifest.checkpointRequired!==false,manifest,artifactUrl:String(new URL(request.url).origin)+'/api/v1/updater?release_id='+encodeURIComponent(release.id)+'&channel='+encodeURIComponent(release.channel)+'&type='+encodeURIComponent(release.release_type)+'&download=1'};
+    const releaseComponents=[...new Set((Array.isArray(manifest.components)?manifest.components:[]).map((x:any)=>String(x||'').trim().toLowerCase()).filter((x:string)=>['base','apex','mcp','studio'].includes(x)))];
+    // The published Update remains a complete shared artifact. License Manager
+    // returns a per-installation execution plan so the runtime applies only
+    // components this exact licence is entitled to use.
+    const runtimeStates=validation.components&&typeof validation.components==='object'?validation.components:{};
+    const entitledComponents=['base','apex','mcp','studio'].filter(component=>{
+      const state=(runtimeStates as any)['orbitfs_'+component];
+      return Boolean(state?.allowed);
+    });
+    const executionComponents=release.release_type==='update'
+      ?releaseComponents.filter((component:string)=>entitledComponents.includes(component))
+      :releaseComponents;
+    const skippedComponents=release.release_type==='update'
+      ?releaseComponents.filter((component:string)=>!executionComponents.includes(component))
+      :[];
+    const componentPlan={releaseComponents,entitledComponents,executionComponents,skippedComponents};
+    const descriptor={id:release.id,version:release.version,product:release.product,releaseType:release.release_type,channel:release.channel,status:release.status,reviewStatus:release.review_status,publishedAt:release.published_at||null,sourceRepo:release.source_repo,sourceRef:release.source_ref,sourceCommit:release.source_sha,checksum:release.checksum,artifactSha256:release.checksum,artifactName:release.artifact_name,fileCount:Number(manifest.fileCount||0),components:Array.isArray(manifest.components)?manifest.components:[],componentPlan,minimumBaseVersion:manifest.minimumBaseVersion||manifest.minimum_version||null,minimumEngineDeployerProtocol:Number(manifest.minimumEngineDeployerProtocol||1),checkpointRequired:manifest.checkpointRequired!==false,manifest,artifactUrl:String(new URL(request.url).origin)+'/api/v1/updater?release_id='+encodeURIComponent(release.id)+'&channel='+encodeURIComponent(release.channel)+'&type='+encodeURIComponent(release.release_type)+'&download=1'};
 
-    if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor,releases:[descriptor]});
+    if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,componentPlan,release:descriptor,releases:[descriptor]});
 
     let artifactUrl=String(release.artifact_url||'').trim();
     const artifactRepo=String(release.artifact_repo||release.source_repo||'').trim();
