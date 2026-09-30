@@ -45,6 +45,9 @@ jobs:
         with:
           category: "/language:javascript-typescript-full-scan"
 
+      - name: Verify Engine update authority contract
+        run: npm run check:engine-update-authority
+
       - name: Run complete production validation
         run: npm run preflight
 
