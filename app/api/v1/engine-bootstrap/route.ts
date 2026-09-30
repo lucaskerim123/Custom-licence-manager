@@ -53,7 +53,7 @@ async function authorized(request: Request) {
   if (!settings?.system_enabled || !settings?.licensing_enabled || settings?.maintenance_mode || !settings?.deployment_enabled || !settings?.update_deployment_enabled) {
     return { error: reply('ENGINE_DEPLOYMENT_AUTHORITY_UNAVAILABLE', 503) };
   }
-  const validation = await validateLicense({ key: licenseKey, productSlug: 'orbitfs_base', componentSlug: 'orbitfs_base', installationId, action: 'validate', telemetry: { client: 'orbitfs-engine-source' } });
+  const validation: any = await validateLicense({ key: licenseKey, productSlug: 'orbitfs_base', componentSlug: 'orbitfs_base', installationId, action: 'validate', telemetry: { client: 'orbitfs-engine-source' } });
   if (!validation.valid || !validation.installation?.locked) return { error: reply(String(validation.code || 'ENGINE_LICENSE_DENIED'), validation.status || 403) };
   // Bootstrap supplies one full host snapshot; component activation still obeys each entitlement in Base.
   return { licenseId: validation.license_id, installationId };
