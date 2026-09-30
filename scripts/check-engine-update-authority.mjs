@@ -5,6 +5,7 @@ const read=(path)=>readFileSync(new URL("../"+path,import.meta.url),"utf8");
 const updater=read("app/api/v1/updater/route.ts");
 const bootstrap=read("app/api/v1/engine-bootstrap/route.ts");
 const deployer=read("app/api/v1/deployer/route.ts");
+const validation=read("app/api/v1/license/validate/route.ts");
 
 assert(updater.includes("const rollback=url.searchParams.get('rollback')==='1'"),"Updater must distinguish normal delivery from rollback.");
 assert(updater.includes("UPDATE_ROLLBACK_TARGET_NOT_INSTALLED"),"Historical Update artifacts must require prior installation.");
@@ -15,3 +16,5 @@ assert(bootstrap.includes("Pinned Engine commit was never authorized for this in
 assert(deployer.includes("const publishedApproved=release.status==='published'&&release.review_status==='approved'"),"Deployment authorization must enforce published releases for normal updates.");
 assert(deployer.includes("if(updateRollback)"),"Deployment authority must have an explicit Update rollback path.");
 console.log("License Manager Engine update authority checks passed.");
+
+assert(validation.includes("UPDATE_RELEASE"),"Legacy bootstrap branch identities must never be coerced into UUID release ids.");
