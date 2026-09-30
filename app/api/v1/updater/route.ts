@@ -57,7 +57,8 @@ export async function GET(request:Request){
     // The published Update remains a complete shared artifact. License Manager
     // returns a per-installation execution plan so the runtime applies only
     // components this exact licence is entitled to use.
-    const runtimeStates=validation.components&&typeof validation.components==='object'?validation.components:{};
+    const validationResult:any=validation;
+    const runtimeStates=validationResult.components&&typeof validationResult.components==='object'?validationResult.components:{};
     const entitledComponents=['base','apex','mcp','studio'].filter(component=>{
       const state=(runtimeStates as any)['orbitfs_'+component];
       return Boolean(state?.allowed);
