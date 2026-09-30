@@ -54,12 +54,11 @@ export async function GET(request:Request){
 
     const manifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
     const releaseComponents=Array.isArray(manifest.components)?manifest.components.map((x:any)=>String(x||'').toLowerCase()):[];
-    if(release.release_type==='update'){
-      const policy=validation.metadata&&typeof validation.metadata==='object'&&validation.metadata.license_policy&&typeof validation.metadata.license_policy==='object'?validation.metadata.license_policy:{};
-      const entitled=policy.components&&typeof policy.components==='object'?policy.components:{};
-      const missing=releaseComponents.filter((component:string)=>component!=='base'&&!Boolean(entitled['orbitfs_'+component]));
-      if(missing.length)return NextResponse.json({ok:false,code:'RELEASE_COMPONENT_NOT_ENTITLED',components:missing},{status:403});
-    }
+    // Update bundles are shared system payloads. Component entitlements control
+    // runtime feature access, not whether an otherwise valid Base licence may
+    // receive the common Update artifact. Blocking the entire artifact when it
+    // contains disabled optional components causes entitled installations to
+    // fail updates before the runtime entitlement gates can do their job.
     const descriptor={id:release.id,version:release.version,product:release.product,releaseType:release.release_type,channel:release.channel,status:release.status,reviewStatus:release.review_status,publishedAt:release.published_at||null,sourceRepo:release.source_repo,sourceRef:release.source_ref,sourceCommit:release.source_sha,checksum:release.checksum,artifactSha256:release.checksum,artifactName:release.artifact_name,fileCount:Number(manifest.fileCount||0),components:Array.isArray(manifest.components)?manifest.components:[],minimumBaseVersion:manifest.minimumBaseVersion||manifest.minimum_version||null,minimumEngineDeployerProtocol:Number(manifest.minimumEngineDeployerProtocol||1),checkpointRequired:manifest.checkpointRequired!==false,manifest,artifactUrl:String(new URL(request.url).origin)+'/api/v1/updater?release_id='+encodeURIComponent(release.id)+'&channel='+encodeURIComponent(release.channel)+'&type='+encodeURIComponent(release.release_type)+'&download=1'};
 
     if(!download)return NextResponse.json({ok:true,authority:'orbitfs-license-master-v2',license_id:validation.license_id||null,release:descriptor,releases:[descriptor]});
