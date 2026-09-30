@@ -59,16 +59,24 @@ async function authorized(request: Request) {
   // Bootstrap supplies one full host snapshot; component activation still obeys each entitlement in Base.
   return { licenseId: validation.license_id, installationId };
 }
-async function snapshot(pinned: string | null) {
+async function snapshot(pinned: string | null, grant: { licenseId: string; installationId: string }) {
   const repository = await github('');
   if (String(repository.id) !== '1358790703' || String(repository.full_name).toLowerCase() !== REPO.toLowerCase())
     throw Object.assign(new Error('Engine repository identity mismatch'), { code: 'ENGINE_SOURCE_IDENTITY_MISMATCH', status: 502 });
   const ref = await github('/git/ref/heads/' + BRANCH);
   const latest = String(ref.object?.sha || '').toLowerCase();
   if (!/^[a-f0-9]{40}$/.test(latest)) throw Object.assign(new Error('Invalid branch commit'), { code: 'ENGINE_SOURCE_SHA_INVALID', status: 502 });
-  // Never accept arbitrary customer-selected commits. A stale pinned descriptor must be re-planned.
-  if (pinned && pinned !== latest) throw Object.assign(new Error('Branch moved since planning'), { code: 'ENGINE_SOURCE_STALE', status: 409 });
-  const sha = latest;
+  let sha = latest;
+  if (pinned && pinned !== latest) {
+    const prior = (await db().query(
+      "select 1 from audit_events where action='engine.source.authorized' and resource_type='installation' and details->>'installation_id'=$1 and details->>'license_id'=$2 and lower(details->>'source_commit')=$3 limit 1",
+      [grant.installationId, grant.licenseId, pinned],
+    )).rows[0];
+    if (!prior) throw Object.assign(new Error('Pinned Engine commit was never authorized for this installation'), { code: 'ENGINE_SOURCE_STALE', status: 409 });
+    sha = pinned;
+  } else if (pinned) {
+    sha = pinned;
+  }
   const tree = await github('/git/trees/' + sha + '?recursive=1');
   if (tree.truncated || !Array.isArray(tree.tree)) throw Object.assign(new Error('Incomplete source tree'), { code: 'ENGINE_SOURCE_TREE_INCOMPLETE', status: 502 });
   const invalidMigrations = tree.tree.filter((item: any) => item.type === 'blob' && /^supabase\/migrations\/(shared|apex|mcp|studio)\//.test(String(item.path || '')) && String(item.path).endsWith('.sql') && !MIGRATION.test(String(item.path)));
@@ -124,7 +132,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const pinned = url.searchParams.get('sha')?.toLowerCase() || null;
     if (pinned && !/^[a-f0-9]{40}$/.test(pinned)) return reply('ENGINE_SOURCE_SHA_INVALID', 400);
-    const result = await snapshot(pinned);
+    const result = await snapshot(pinned, { licenseId: String(grant.licenseId), installationId: String(grant.installationId) });
     await db().query(
       "insert into audit_events(actor,action,resource_type,details) values($1,'engine.source.authorized','installation',$2)",
       ['engine-bootstrap', JSON.stringify({ installation_id: grant.installationId, license_id: grant.licenseId, source_commit: result.sha, downloaded: url.searchParams.get('download') === '1' })],
