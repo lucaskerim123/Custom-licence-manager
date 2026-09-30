@@ -78,7 +78,7 @@ export async function POST(request:Request){
   if(!release.checksum)return NextResponse.json({ok:false,code:'RELEASE_ARTIFACT_NOT_VERIFIED'},{status:409});
   const licenseId=String(body?.licenseId||body?.license_id||'').trim();
   if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED',error:'No authoritative licence id was supplied for this installation.'},{status:403});
-  const license=(await db().query(`select id,status,expires_at from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
+  const license=(await db().query(`select id,status,expires_at,component,metadata from licenses where id=$1 and product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
   if(!license)return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence does not belong to this release product.'},{status:403});
   if(license.status!=='active')return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:`The installation licence is ${license.status||'inactive'}; an active licence is required.`},{status:403});
   if(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence has expired.'},{status:403});
@@ -136,6 +136,29 @@ export async function POST(request:Request){
       if(!access)return NextResponse.json({ok:false,code:'LICENSE_CHANNEL_ACCESS_DENIED',error:`This licence is not assigned to the ${channel} release channel.`},{status:403});
     }
   }
+  const releaseManifest=release.manifest&&typeof release.manifest==='object'?release.manifest:{};
+  const releaseComponents=[...new Set((Array.isArray(releaseManifest.components)?releaseManifest.components:[])
+    .map((value:any)=>String(value||'').trim().toLowerCase())
+    .filter((value:string)=>['base','apex','mcp','studio'].includes(value)))];
+  const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'
+    ?license.metadata.license_policy:{};
+  const entitlementMap=policy.components&&typeof policy.components==='object'?policy.components:{};
+  const licenseComponent=String(license.component||'').trim().toLowerCase();
+  const entitledComponents=['base','apex','mcp','studio'].filter((component)=>{
+    if(component==='base')return licenseComponent==='orbitfs_base'||Boolean(entitlementMap.orbitfs_base);
+    return Boolean(entitlementMap['orbitfs_'+component]);
+  });
+  const executionComponents=action==='update'||updateRollback
+    ?releaseComponents.filter((component:string)=>entitledComponents.includes(component))
+    :releaseComponents;
+  const skippedComponents=(action==='update'||updateRollback)
+    ?releaseComponents.filter((component:string)=>!executionComponents.includes(component))
+    :[];
+  const componentPlan={releaseComponents,entitledComponents,executionComponents,skippedComponents};
+  if(action==='update'&&phase==='authorize'&&releaseComponents.length&&!executionComponents.length){
+    return NextResponse.json({ok:true,authorized:true,recorded:false,authority:'orbitfs-license-master-v2',notApplicable:true,code:'UPDATE_NOT_APPLICABLE',componentPlan,release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:'customer-deployer'});
+  }
+
   const rawComponents=body?.componentState??body?.components;
   const componentState=Array.isArray(rawComponents)
     ?Object.fromEntries(rawComponents.map((value:any)=>[String(value),{version:String(release.version),status:phase==='completed'?'installed':phase}]))
@@ -143,11 +166,11 @@ export async function POST(request:Request){
   const installationProductVersion=action==='update'
     ?String(body?.baseVersion||body?.base_version||body?.previousVersion||body?.previous_version||'').trim()||null
     :(body?.productVersion?String(body.productVersion):release.version);
-  const details={action,phase,rollbackScope:updateRollback?'update':'base',installationId:installationId||null,licenseId,releaseVersion:release.version,product:release.product,components:componentState,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
+  const details={action,phase,rollbackScope:updateRollback?'update':'base',installationId:installationId||null,licenseId,releaseVersion:release.version,product:release.product,components:componentState,componentPlan,deploymentId:body?.deploymentId||body?.deployment_id||null,deploymentUrl:body?.deploymentUrl||body?.deployment_url||null,projectId:body?.projectId||body?.project_id||null,projectName:body?.projectName||body?.project_name||null,customerIdentity:body?.customerIdentity&&typeof body.customerIdentity==='object'?body.customerIdentity:null};
   await db().query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,$3,'release',$4,$5)`,[null,actor.actor||'deployer',`deployment.${phase}`,release.id,JSON.stringify(details)]);
   if(installationId){
     const completedComponents=phase==='completed'?componentState:{};
-    await recordInstallationCheckIn({licenseId,installationId,action:action as any,phase:phase==='authorize'?'started':phase==='completed'?'completed':'failed',product:release.product,productVersion:installationProductVersion,previousVersion:body?.previousVersion?String(body.previousVersion):null,releaseId:release.id,deploymentId:details.deploymentId?String(details.deploymentId):null,deploymentUrl:details.deploymentUrl?String(details.deploymentUrl):null,projectId:details.projectId?String(details.projectId):null,projectName:details.projectName?String(details.projectName):null,provider:body?.provider?String(body.provider):'vercel',region:body?.region?String(body.region):null,platform:body?.platform?String(body.platform):'vercel',architecture:body?.architecture?String(body.architecture):null,hostname:body?.hostname?String(body.hostname):null,client:body?.client?String(body.client):'orbitfs-deployer',clientVersion:body?.clientVersion?String(body.clientVersion):null,sourceIp:requestIp(request),userAgent:request.headers.get('user-agent'),customerIdentity:details.customerIdentity,details:{components:completedComponents,requestedComponents:componentState,deploymentStatus:phase,releaseVersion:String(release.version),rollbackScope:updateRollback?'update':'base'}});
+    await recordInstallationCheckIn({licenseId,installationId,action:action as any,phase:phase==='authorize'?'started':phase==='completed'?'completed':'failed',product:release.product,productVersion:installationProductVersion,previousVersion:body?.previousVersion?String(body.previousVersion):null,releaseId:release.id,deploymentId:details.deploymentId?String(details.deploymentId):null,deploymentUrl:details.deploymentUrl?String(details.deploymentUrl):null,projectId:details.projectId?String(details.projectId):null,projectName:details.projectName?String(details.projectName):null,provider:body?.provider?String(body.provider):'vercel',region:body?.region?String(body.region):null,platform:body?.platform?String(body.platform):'vercel',architecture:body?.architecture?String(body.architecture):null,hostname:body?.hostname?String(body.hostname):null,client:body?.client?String(body.client):'orbitfs-deployer',clientVersion:body?.clientVersion?String(body.clientVersion):null,sourceIp:requestIp(request),userAgent:request.headers.get('user-agent'),customerIdentity:details.customerIdentity,details:{components:completedComponents,requestedComponents:componentState,componentPlan,deploymentStatus:phase,releaseVersion:String(release.version),rollbackScope:updateRollback?'update':'base'}});
   }
-  return NextResponse.json({ok:true,authorized:phase==='authorize',recorded:phase!=='authorize',authority:'orbitfs-license-master-v2',release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:phase==='authorize'?'customer-deployer':undefined});
+  return NextResponse.json({ok:true,authorized:phase==='authorize',recorded:phase!=='authorize',authority:'orbitfs-license-master-v2',componentPlan,release:{id:release.id,version:release.version,releaseType:release.release_type,product:release.product,artifactSha256:release.checksum,sourceRepo:release.source_repo,sourceRef:release.source_ref},execution:phase==='authorize'?'customer-deployer':undefined});
 }
