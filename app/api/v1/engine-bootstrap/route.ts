@@ -8,6 +8,7 @@ import { validateLicense } from '../../../../lib/core/licenses';
 // Customer Base installations authenticate using their existing licence and installation ID.
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const REPO = 'lucaskerim123/V1-vercel-engine';
 const BRANCH = 'UPDATE_RELEASE';
@@ -108,7 +109,7 @@ async function snapshot(pinned: string | null) {
   const packageData = {
     format: 'orbitfs-engine-release-v3', schemaVersion: 3, version, releaseId, sourceCommit: sha,
     createdAt: '1970-01-01T00:00:00.000Z', components: COMPONENTS, componentVersions: Object.fromEntries(COMPONENTS.map((c) => [c, version])),
-    checkpointRequired: true, minimumEngineDeployerProtocol: 1, projectSettings: { framework: 'sveltekit', buildCommand: 'npm run build', installCommand: 'npm ci' },
+    checkpointRequired: true, minimumEngineDeployerProtocol: 1, minimumBaseVersion: '1.0.0', projectSettings: { framework: 'sveltekit', buildCommand: 'npm run build', installCommand: 'npm ci' },
     database: { format: 'orbitfs-db-migrations-v1', mode: 'shared-panel', provider: 'supabase', migrationCount: migrations.length, migrations },
     fileCount: files.length, files,
   };
@@ -133,7 +134,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, release: {
       id: result.releaseId, version: result.version, sourceCommit: result.sha, sourceRepo: REPO,
       sourceRef: BRANCH, checksum: result.checksum, fileCount: result.fileCount, components: COMPONENTS,
-      minimumEngineDeployerProtocol: 1, checkpointRequired: true,
+      minimumEngineDeployerProtocol: 1, minimumBaseVersion: '1.0.0', checkpointRequired: true,
     } }, { headers: { 'cache-control': 'private, no-store' } });
   } catch (error: any) {
     console.error('authorized engine bootstrap failed', { code: error?.code || 'ENGINE_SOURCE_ERROR' });
