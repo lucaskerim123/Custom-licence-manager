@@ -43,12 +43,8 @@ export async function GET(request:Request){
     if(!validation.valid||validation.installation?.locked!==true)
       return deny(String(validation.code||'ENGINE_BOOTSTRAP_LICENSE_DENIED'),Number(validation.status||403));
 
-    // Initial Shared Engine snapshot includes all three components. Preserve
-    // the existing complete-baseline entitlement requirement.
-    const components=validation.components||{};
-    const required=['orbitfs_mcp','orbitfs_apex','orbitfs_studio'];
-    const denied=required.filter(name=>components[name]?.allowed!==true || components[name]?.lockedToThisInstallation!==true);
-    if(denied.length)return NextResponse.json({ok:false,code:'ENGINE_BOOTSTRAP_COMPONENT_NOT_ENTITLED',components:denied},{status:403});
+    // The host is a shared code baseline, not an entitlement grant.
+    // Per-component entitlement is enforced independently at activation/runtime.
 
     const token=String(process.env.ORBITFS_ENGINE_BOOTSTRAP_GITHUB_TOKEN||process.env.ORBITFS_RELEASE_DISPATCH_TOKEN||process.env.GITHUB_RELEASE_TOKEN||'').trim();
     if(!token)return deny('ENGINE_BOOTSTRAP_SOURCE_NOT_CONFIGURED',503);
