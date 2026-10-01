@@ -22,7 +22,8 @@
     "database/migrations/20260929_official_api_connections.sql": "cf5f854ae44bc028c34ff6028127f278012a39df",
     "database/migrations/20260929_official_api_connections_v2.sql": "84b861a5a689da7d5d90ab658aa4982d72a0a8fb",
     "database/migrations/20261001_emergency_lockdown.sql": "2d339b70200c4a9df5beb18cea582915a1b55857",
-    "database/migrations/20261002_database_package_registry.sql": "9c61a2b5210efd69fda4ab2a1401464801b7a6e0"
+    "database/migrations/20261002_database_package_registry.sql": "9c61a2b5210efd69fda4ab2a1401464801b7a6e0",
+    "database/migrations/20261002_auto_technical_approval.sql": "fa8f45a8a82524dbdc10719a2cbe1787a42d6114"
   },
   "remote_migrations": [
     {
@@ -156,6 +157,10 @@
     {
       "version": "20261001144526",
       "name": "database_package_registry"
+    },
+    {
+      "version": "20261001213329",
+      "name": "auto_technical_approval"
     }
   ]
 }
