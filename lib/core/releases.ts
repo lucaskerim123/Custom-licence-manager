@@ -221,6 +221,26 @@ async function scanPackage(row:any,bytes:Buffer){
       checks.push({key:'database_migration_chain',ok:migrationChainOk,message:migrationChainOk?`Base artifact contains ${migrationChain.rows.length} verified migration file(s) through ${latestMigration}.`:'Base artifact migration files must exactly match databaseMigrationCount/databaseLatestMigration and pass size/SHA-256 verification.'});
       checks.push({key:'database_schema_snapshot',ok:databaseSnapshotOk,message:databaseSnapshotOk?`Base artifact contains the verified customer DB snapshot (${migrationCount} migrations, latest ${latestMigration}).`:'Base artifact must contain a checksummed supabase/customer-schema.sql generated from the authoritative migration chain.'});
       checks.push({key:'database_schema_replay_safety',ok:schemaReplaySafe,message:schemaReplayMessage});
+      const baseFilePaths=new Set(files.map((file:any)=>String(file?.file||'')));
+      const requiredRuntimeFiles=[
+        'deployment/base-environment.json',
+        'tools/prepare-license-runtime.mjs',
+        'src/lib/server/vercel-engine-provision.ts',
+        'src/lib/server/engine-host.ts',
+        'src/lib/server/engine-release-client.ts',
+        'src/lib/server/engine-update-planner.ts',
+        'src/lib/server/license.ts',
+        'src/lib/server/runtime-secrets.ts',
+        'src/routes/api/engine-host/+server.ts',
+        'src/routes/api/engine-host/[action]/+server.ts',
+        'src/routes/api/engine-host/launch/+server.ts',
+        'src/routes/api/engine-license/+server.ts',
+        'src/routes/api/license/activate/+server.ts',
+        'src/routes/api/license/status/+server.ts',
+        'src/routes/api/store/update-engine/+server.ts'
+      ];
+      const missingRuntimeFiles=requiredRuntimeFiles.filter((path)=>!baseFilePaths.has(path));
+      checks.push({key:'package_base_runtime_files',ok:missingRuntimeFiles.length===0,message:missingRuntimeFiles.length?'Base artifact is missing required runtime/deployer files: '+missingRuntimeFiles.join(', '):'Base artifact contains the required runtime/deployer files.'});
     }
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
     const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
