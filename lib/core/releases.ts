@@ -159,12 +159,29 @@ async function scanPackage(row:any,bytes:Buffer){
       const packageSchemaHash=String(pkg.databaseSchemaSha256||pkg.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
       const releaseSchemaHash=String(row.manifest?.databaseSchemaSha256||row.manifest?.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
       const schemaFile=files.find((file:any)=>String(file?.file||'')===schemaPath);
-      let actualSchemaHash='',schemaPayloadOk=false;
+      let actualSchemaHash='',schemaPayloadOk=false,schemaReplaySafe=false,schemaReplayMessage='Customer DB snapshot could not be inspected.';
       if(schemaFile?.data&&schemaFile?.encoding==='base64'){
         const bytes=Buffer.from(schemaFile.data,'base64');
         actualSchemaHash=createHash('sha256').update(bytes).digest('hex');
         const sql=bytes.toString('utf8');
         schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
+        const obsoleteProfileConflict=/on\s+conflict\s*\(\s*workspace_id\s*,\s*user_id\s*\)\s+do\s+nothing/i.test(sql);
+        const unsafeUniqueAdds=[...sql.matchAll(/alter\s+table\s+([a-z0-9_.]+)\s+add\s+constraint\s+([a-z0-9_]+)\s+unique\s*\(/ig)].filter((match)=>{
+          const before=sql.slice(Math.max(0,(match.index||0)-300),match.index||0);
+          return !new RegExp(`drop\\s+constraint\\s+if\\s+exists\\s+${String(match[2]).replace(/[.*+?^$()|[\\]\\]/g,'\\      let actualSchemaHash='',schemaPayloadOk=false;
+      if(schemaFile?.data&&schemaFile?.encoding==='base64'){
+        const bytes=Buffer.from(schemaFile.data,'base64');
+        actualSchemaHash=createHash('sha256').update(bytes).digest('hex');
+        const sql=bytes.toString('utf8');
+        schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
+      }')}`,'i').test(before);
+        });
+        schemaReplaySafe=!obsoleteProfileConflict&&unsafeUniqueAdds.length===0;
+        schemaReplayMessage=obsoleteProfileConflict
+          ?'Customer DB snapshot contains the obsolete profile-state ON CONFLICT(workspace_id,user_id) target.'
+          :unsafeUniqueAdds.length
+            ?`Customer DB snapshot contains non-replay-safe UNIQUE constraint creation: ${unsafeUniqueAdds[0][2]}.`
+            :'Customer DB snapshot is replay-safe for profile-state conflict handling and named UNIQUE constraints.';
       }
       const migrationCount=Number(pkg.databaseMigrationCount??pkg.releaseInfo?.databaseMigrationCount??0);
       const latestMigration=String(pkg.databaseLatestMigration||pkg.releaseInfo?.databaseLatestMigration||'').trim();
@@ -209,6 +226,7 @@ async function scanPackage(row:any,bytes:Buffer){
       checks.push({key:'database_schema_version',ok:Boolean(packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema),message:packageDatabaseSchema&&releaseDatabaseSchema&&packageDatabaseSchema===releaseDatabaseSchema?`Base database schema version ${packageDatabaseSchema} is consistent.`:'Base artifact and release record must declare the same databaseSchemaVersion.'});
       checks.push({key:'database_migration_chain',ok:migrationChainOk,message:migrationChainOk?`Base artifact contains ${migrationChain.rows.length} verified migration file(s) through ${latestMigration}.`:'Base artifact migration files must exactly match databaseMigrationCount/databaseLatestMigration and pass size/SHA-256 verification.'});
       checks.push({key:'database_schema_snapshot',ok:databaseSnapshotOk,message:databaseSnapshotOk?`Base artifact contains the verified customer DB snapshot (${migrationCount} migrations, latest ${latestMigration}).`:'Base artifact must contain a checksummed supabase/customer-schema.sql generated from the authoritative migration chain.'});
+      checks.push({key:'database_schema_replay_safety',ok:schemaReplaySafe,message:schemaReplayMessage});
     }
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
     const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
