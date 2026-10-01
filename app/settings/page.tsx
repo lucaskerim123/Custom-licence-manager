@@ -1,6 +1,7 @@
 import {requireUser} from '../../lib/session';
 import {getSettings,listRecentPulses,setSetting,sendPulse,updateRuntimePolicy,type SettingField} from '../../lib/core/settings';
 import {revalidatePath} from 'next/cache';
+import {db} from '../../lib/db';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import AuthorityControlGrid from '../components/AuthorityControlGrid';
@@ -71,6 +72,50 @@ async function pulse(formData:FormData){
  revalidatePath('/settings');revalidatePath('/');
 }
 
+
+async function resetReleaseLab(formData:FormData){
+ 'use server';
+ const user=await requireUser();if(user.role!=='owner')return;
+ const confirmation=String(formData.get('confirmation')||'').trim();
+ if(confirmation!=='RESET RELEASES TO V1.0.0')return;
+ const pool=db();
+ await pool.query('begin');
+ try{
+  const releaseCount=Number((await pool.query("select count(*)::int count from releases")).rows[0]?.count||0);
+  const deploymentEventCount=Number((await pool.query("select count(*)::int count from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')")).rows[0]?.count||0);
+  const activationCount=Number((await pool.query("select count(*)::int count from activations where product_version is not null or last_deployment_id is not null or last_deployment_url is not null or deployment_count<>0 or coalesce(current_components,'{}'::jsonb)<>'{}'::jsonb")).rows[0]?.count||0);
+
+  await pool.query("delete from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')");
+  await pool.query('delete from releases');
+  await pool.query(`update activations
+    set product_version=null,
+        last_deployment_id=null,
+        last_deployment_url=null,
+        last_deployment_status=null,
+        last_operation=null,
+        deployment_count=0,
+        current_components='{}'::jsonb`);
+  await pool.query(
+   `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
+    values($1,$2,'release_lab.reset','system','release-lab',$3)`,
+   [user.id,user.email,JSON.stringify({
+    baseline_version:'1.0.0',
+    releases_deleted:releaseCount,
+    deployment_events_deleted:deploymentEventCount,
+    activation_summaries_cleared:activationCount,
+    customer_provider_resources_deleted:false,
+    licenses_deleted:false,
+    audit_history_deleted:false,
+   })]
+  );
+  await pool.query('commit');
+ }catch(error){
+  await pool.query('rollback');
+  throw error;
+ }
+ revalidatePath('/settings');revalidatePath('/releases');revalidatePath('/installations');revalidatePath('/');
+}
+
 export default async function Settings(){
  const user=await requireUser();
  const s=await getSettings();
@@ -136,6 +181,15 @@ export default async function Settings(){
     </form>:<div className="muted">Runtime policy is read-only for your role.</div>}
    </div>
   </details>
+
+
+  {user.role==='owner'&&<section className="section card">
+   <div className="section-head"><div><div className="eyebrow">Danger zone</div><h2>Release lab reset</h2><p className="muted">Use this only when the Base/Update release pipeline has finished testing and you want a clean production starting point. It deletes License Manager Base/Update release records and deployment/update event history, clears activation deployment/version summaries, and allows the next clean release line to start at v1.0.0. It does not delete customer Supabase/Vercel resources, licences, users, channels or audit history.</p></div><span className="badge">OWNER ONLY</span></div>
+   <form action={resetReleaseLab} className="policy-grid">
+    <label><span>Type to confirm</span><input className="input" name="confirmation" autoComplete="off" placeholder="RESET RELEASES TO V1.0.0"/></label>
+    <div className="policy-submit"><button className="button danger">Reset release/deployment history</button></div>
+   </form>
+  </section>}
 
   <section className="section card">
    <div className="section-head"><div><div className="eyebrow">Pulse delivery</div><h2>Recent licence directives</h2><p className="muted">Targeted runtime directives and client-reported delivery state. Receipts are observability only; License Manager validation remains authoritative.</p></div><span className="badge">{recentPulses.length} recent</span></div>
