@@ -26,7 +26,12 @@ export async function middleware(request: NextRequest) {
   const host = request.nextUrl.hostname.toLowerCase();
   const pathname = request.nextUrl.pathname;
 
-  if(!LOCKDOWN_ALLOWED.has(pathname)){
+  // Emergency lockdown protects the external technical authority, not the
+  // License Manager control plane. Keeping panel.incendiarynetworks.cc out of
+  // this probe also avoids an internal fetch + database read on every admin
+  // page/navigation request.
+  const enforceLockdown=host!==PANEL_HOST&&pathname.startsWith('/api/v1/')&&!LOCKDOWN_ALLOWED.has(pathname);
+  if(enforceLockdown){
     const state=await lockdownState(request);
     if(state.locked){
       if(pathname.startsWith('/api/')){
@@ -42,7 +47,6 @@ export async function middleware(request: NextRequest) {
         {status:423,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}}
       );
     }
-  }
 
   if (host === API_HOST) {
     if (pathname === '/') {
