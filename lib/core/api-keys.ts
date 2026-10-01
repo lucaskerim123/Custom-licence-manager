@@ -27,7 +27,9 @@ function scopeAllows(granted: ApiScope[], required: ApiScope) {
   if (granted.includes('license.validate') && required === 'license.issue') return true;
   if (granted.includes('releases.control') && ['releases.write', 'releases.read'].includes(required)) return true;
   if (granted.includes('releases.write') && required === 'releases.read') return true;
-  if (granted.includes('deployment.write') && required === 'deployment.read') return true;\n  if (granted.includes('database.packages.control') && ['database.packages.write', 'database.packages.read'].includes(required)) return true;\n  if (granted.includes('database.packages.write') && required === 'database.packages.read') return true;
+  if (granted.includes('deployment.write') && required === 'deployment.read') return true;
+  if (granted.includes('database.packages.control') && ['database.packages.write', 'database.packages.read'].includes(required)) return true;
+  if (granted.includes('database.packages.write') && required === 'database.packages.read') return true;
   return false;
 }
 
