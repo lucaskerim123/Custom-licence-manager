@@ -167,14 +167,8 @@ async function scanPackage(row:any,bytes:Buffer){
         schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
         const obsoleteProfileConflict=/on\s+conflict\s*\(\s*workspace_id\s*,\s*user_id\s*\)\s+do\s+nothing/i.test(sql);
         const unsafeUniqueAdds=[...sql.matchAll(/alter\s+table\s+([a-z0-9_.]+)\s+add\s+constraint\s+([a-z0-9_]+)\s+unique\s*\(/ig)].filter((match)=>{
-          const before=sql.slice(Math.max(0,(match.index||0)-300),match.index||0);
-          return !new RegExp(`drop\\s+constraint\\s+if\\s+exists\\s+${String(match[2]).replace(/[.*+?^$()|[\\]\\]/g,'\\      let actualSchemaHash='',schemaPayloadOk=false;
-      if(schemaFile?.data&&schemaFile?.encoding==='base64'){
-        const bytes=Buffer.from(schemaFile.data,'base64');
-        actualSchemaHash=createHash('sha256').update(bytes).digest('hex');
-        const sql=bytes.toString('utf8');
-        schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
-      }')}`,'i').test(before);
+          const before=sql.slice(Math.max(0,(match.index||0)-300),match.index||0).toLowerCase();
+          return !before.includes(`drop constraint if exists ${String(match[2]).toLowerCase()}`);
         });
         schemaReplaySafe=!obsoleteProfileConflict&&unsafeUniqueAdds.length===0;
         schemaReplayMessage=obsoleteProfileConflict
