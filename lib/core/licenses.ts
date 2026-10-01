@@ -24,7 +24,9 @@ function runtimeComponentStates(licenseComponent:string,entitlements:Record<stri
   return out;
 }
 function hashKey(key: string) { return crypto.createHash('sha256').update(key, 'utf8').digest('hex'); }
+export function hashLicenseCredential(key:string){return hashKey(key)}
 export function generateLicenseKey() { return `LIC-${crypto.randomBytes(5).toString('hex').toUpperCase()}-${crypto.randomBytes(5).toString('hex').toUpperCase()}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`; }
+export function generateInstallationCredential(){return generateLicenseKey()}
 
 export async function issueLicense(input: { productId: string; customerExternalId?: string | null; customerOverride?: boolean; externalReference?: string | null; expiresAt?: Date | null; actorUserId?: string | null; actor?: string; metadata?: Record<string, unknown> }) {
   const pool=db();
@@ -64,9 +66,14 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
   const productFamily=input.productSlug==='orbitfs'?'orbitfs':componentSlug.startsWith('orbitfs_')?'orbitfs':input.productSlug;
   if(productFamily!=='orbitfs')return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
   if(!input.installationId)return{valid:false,code:'INSTALLATION_ID_REQUIRED' as const,status:400,runtime_policy};
-  const result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug like 'orbitfs_%' limit 1`,[hashKey(input.key)]);
+  const credentialHash=hashKey(input.key);
+  let result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status,false as credential_scoped from licenses l join products p on p.id=l.product_id where l.license_key_hash=$1 and p.slug like 'orbitfs_%' limit 1`,[credentialHash]);
+  if(!result.rowCount&&input.installationId){
+    result=await pool.query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component,p.status product_status,true as credential_scoped,a.status credential_activation_status from activations a join licenses l on l.id=a.license_id join products p on p.id=l.product_id where a.installation_id=$1 and a.metadata->>'runtime_credential_hash'=$2 and p.slug like 'orbitfs_%' limit 1`,[input.installationId,credentialHash]);
+  }
   if(!result.rowCount)return{valid:false,code:'LICENSE_NOT_FOUND' as const,status:404,runtime_policy};
   const license=result.rows[0];
+  if(license.credential_scoped===true&&license.credential_activation_status!=='active')return{valid:false,code:'INSTALLATION_RELEASED' as const,status:403,runtime_policy};
   const policy=license.metadata&&typeof license.metadata==='object'&&license.metadata.license_policy&&typeof license.metadata.license_policy==='object'?license.metadata.license_policy:{};
   const entitledComponents=policy.components&&typeof policy.components==='object'?policy.components:{};
   const validationAction=String(input.action||'validate').trim().toLowerCase();
