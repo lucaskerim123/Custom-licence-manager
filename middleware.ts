@@ -47,6 +47,7 @@ export async function middleware(request: NextRequest) {
         {status:423,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}}
       );
     }
+  }
 
   if (host === API_HOST) {
     if (pathname === '/') {
