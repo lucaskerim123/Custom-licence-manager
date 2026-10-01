@@ -62,7 +62,9 @@ export function validateDatabasePackage(input:any){
 
   const minimumBaseVersion=input.minimumBaseVersion==null?null:String(input.minimumBaseVersion).trim()||null;
   const migrations=Array.isArray(input.migrations)?input.migrations:[];
-  if(!migrations.length)throw new Error('DATABASE_PACKAGE_MIGRATIONS_REQUIRED');
+  const migrationCount=Number(input.migrationCount);
+  if(!Number.isInteger(migrationCount)||migrationCount<0||migrationCount!==migrations.length)throw new Error('DATABASE_PACKAGE_MIGRATION_COUNT_INVALID');
+  if(selected!=='apex'&&!migrations.length)throw new Error('DATABASE_PACKAGE_MIGRATIONS_REQUIRED');
 
   const ids=new Set<string>();
   let totalBytes=0;
@@ -129,6 +131,7 @@ export function validateDatabasePackage(input:any){
     databaseSchemaVersion,
     minimumBaseSchemaVersion,
     minimumBaseVersion,
+    migrationCount,
     migrations
   };
 
