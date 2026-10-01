@@ -17,6 +17,10 @@ export async function GET() {
       external_authority_online: Boolean(settings?.system_enabled),
       licensing_enabled: Boolean(settings?.licensing_enabled),
       maintenance_mode: Boolean(settings?.maintenance_mode),
+      authority_reason: !settings?.system_enabled ? 'manual_shutdown' : !settings?.licensing_enabled ? 'licensing_disabled' : settings?.maintenance_mode ? 'maintenance' : null,
+      provider_outage: false,
+      grace_action: 'normal',
+      failure_counter_action: 'normal',
       pulse_revision: Number(settings?.pulse_revision||0),
       pulse_at: settings?.pulse_at??null,
       pulse_reason: settings?.pulse_reason??null,
@@ -31,8 +35,8 @@ export async function GET() {
   } catch (error) {
     console.error('legacy health check failed', error);
     return NextResponse.json(
-      { ok: false, service: 'license-manager', code: 'DATABASE_UNAVAILABLE' },
-      { status: 503 },
+      { ok: false, service: 'license-manager', code: 'DATABASE_UNAVAILABLE', authority_reason: 'provider_failure', provider_outage: true, grace_action: 'freeze', failure_counter_action: 'freeze' },
+      { status: 503, headers: { 'cache-control': 'no-store' } },
     );
   }
 }
