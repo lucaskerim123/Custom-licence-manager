@@ -1,6 +1,6 @@
 import {NextResponse} from 'next/server';
-import {integrationAuthorized} from '../../../../../lib/auth';
-import {enableEmergencyLockdown,getEmergencyLockdown} from '../../../../../lib/core/lockdown';
+import {integrationAuthorized} from '../../../../lib/auth';
+import {enableEmergencyLockdown,getEmergencyLockdown} from '../../../../lib/core/lockdown';
 
 export async function GET(request:Request){
  const actor=await integrationAuthorized(request,'license.manage');
