@@ -34,7 +34,12 @@ function component(value:unknown):CustomerDatabaseComponent{
 }
 
 function sha256(bytes:Buffer){return createHash('sha256').update(bytes).digest('hex');}
-function canonicalBytes(value:unknown){return Buffer.from(JSON.stringify(value),'utf8');}
+function canonicalJson(value:any):string{
+  if(value===null||typeof value!=='object')return JSON.stringify(value);
+  if(Array.isArray(value))return '['+value.map((item)=>canonicalJson(item)).join(',')+']';
+  return '{'+Object.keys(value).sort().map((key)=>JSON.stringify(key)+':'+canonicalJson(value[key])).join(',')+'}';
+}
+function canonicalBytes(value:unknown){return Buffer.from(canonicalJson(value),'utf8');}
 
 export function validateDatabasePackage(input:any){
   if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('DATABASE_PACKAGE_INVALID');
