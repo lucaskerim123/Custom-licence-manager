@@ -34,7 +34,7 @@ export async function GET(request:Request,{params}:{params:Promise<{component:st
       if(!allowed)return NextResponse.json({ok:false,code:'DATABASE_PACKAGE_COMPONENT_NOT_ENTITLED'},{status:403});
     }else{
       const key=entitlementKey(component);
-      if(key&&states[key]&&!states[key]?.allowed)return NextResponse.json({ok:false,code:'DATABASE_PACKAGE_COMPONENT_NOT_ENTITLED'},{status:403});
+      if(key&&!states[key]?.allowed)return NextResponse.json({ok:false,code:'DATABASE_PACKAGE_COMPONENT_NOT_ENTITLED'},{status:403});
     }
   }
 
