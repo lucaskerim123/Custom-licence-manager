@@ -76,8 +76,8 @@ async function pulse(formData:FormData){
 async function resetReleaseLab(formData:FormData){
  'use server';
  const user=await requireUser();if(user.role!=='owner')return;
- const confirmation=String(formData.get('confirmation')||'').trim();
- if(confirmation!=='RESET RELEASES TO V1.0.0')return;
+ const confirmed=formData.get('confirmation')==='on';
+ if(!confirmed)return;
  const pool=db();
  const client=await pool.connect();
  try{
@@ -189,7 +189,7 @@ export default async function Settings(){
   {user.role==='owner'&&<section className="section card">
    <div className="section-head"><div><div className="eyebrow">Danger zone</div><h2>Release lab reset</h2><p className="muted">Use this only when the Base/Update release pipeline has finished testing and you want a clean production starting point. It deletes License Manager Base/Update release records and deployment/update event history, clears activation deployment/version summaries, and allows the next clean release line to start at v1.0.0. It does not delete customer Supabase/Vercel resources, licences, users, channels or audit history.</p></div><span className="badge">OWNER ONLY</span></div>
    <form action={resetReleaseLab} className="policy-grid">
-    <label><span>Type to confirm</span><input className="input" name="confirmation" autoComplete="off" placeholder="RESET RELEASES TO V1.0.0"/></label>
+    <label className="toggle-line"><input type="checkbox" name="confirmation" required/><span><b>I understand this clears Base/Update release and deployment history</b><small>Customer Supabase/Vercel resources, licences, users, channels and audit history are not deleted.</small></span></label>
     <div className="policy-submit"><button className="button danger">Reset release/deployment history</button></div>
    </form>
   </section>}
