@@ -1,6 +1,5 @@
 import {requireUser} from '../../lib/session';
 import {getSettings,listRecentPulses,setSetting,sendPulse,updateRuntimePolicy,type SettingField} from '../../lib/core/settings';
-import {disableEmergencyLockdown,enableEmergencyLockdown,getEmergencyLockdown} from '../../lib/core/lockdown';
 import {revalidatePath} from 'next/cache';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
@@ -52,20 +51,6 @@ async function updatePolicy(formData:FormData){
  revalidatePath('/settings');revalidatePath('/');
 }
 
-async function updateEmergencyLockdown(formData:FormData){
- 'use server';
- const user=await requireUser();if(!['owner','admin'].includes(user.role))return;
- const action=String(formData.get('lockdown_action')||'');
- const reason=String(formData.get('reason')||'').trim();
- if(action==='enable'){
-  if(!reason)return;
-  await enableEmergencyLockdown(user.email,reason);
- }else if(action==='disable'){
-  await disableEmergencyLockdown(user.email,reason||'Owner recovery from License Manager');
- }
- revalidatePath('/settings');revalidatePath('/');
-}
-
 async function pulse(formData:FormData){
  'use server';
  const user=await requireUser();if(!['owner','admin'].includes(user.role))return;
@@ -89,12 +74,11 @@ async function pulse(formData:FormData){
 export default async function Settings(){
  const user=await requireUser();
  const s=await getSettings();
- const lockdown=await getEmergencyLockdown();
  const recentPulses=await listRecentPulses(20);
  const canManage=['owner','admin'].includes(user.role);
 
  const rows=[
-  {field:'system_enabled',label:'External authority',help:'Master switch for external License Manager APIs. Turning this off rejects runtime licensing, release and deployment authority requests while leaving this admin panel available.',onText:'External API authority is online',offText:'External API authority is offline',enabled:Boolean(s.system_enabled)},
+  {field:'system_enabled',label:'External authority / master shutdown',help:'This is the master shutdown switch for external License Manager authority. Turning it off rejects runtime licensing, release and deployment authority requests while leaving this admin panel available.',onText:'External API authority is online',offText:'External API authority is offline',enabled:Boolean(s.system_enabled)},
   {field:'licensing_enabled',label:'License validation & issuance',help:'Controls license issuance and runtime validation. Turning this off makes license checks fail closed and sends a pulse so connected runtimes re-check authority.',onText:'Licensing is accepting validations',offText:'Licensing validations are blocked',enabled:Boolean(s.licensing_enabled)},
   {field:'maintenance_mode',label:'Maintenance enforcement',help:'Makes runtime validation deliberately unavailable while keeping the admin plane accessible. Offline grace remains governed by the runtime policy below.',onText:'Maintenance mode is active',offText:'Normal validation mode',dangerWhen:true,enabled:Boolean(s.maintenance_mode)},
   {field:'customer_self_unlock_enabled',label:'Customer installation unlock',help:'Allows customers to release their currently bound OrbitFS installation from the Billing Store so the same licence can bind to a reinstall or replacement system. OrbitFS still permits only one bound system at a time.',onText:'Customers can unlock / release their installation',offText:'Only administrators can release installations',enabled:Boolean(s.customer_self_unlock_enabled)},
@@ -118,22 +102,6 @@ export default async function Settings(){
    <div className="card metric-card"><div className="metric-icon icon-blue">⌁</div><div><span className="metric-label">Validation TTL</span><strong className="metric">{Number(s.validation_ttl_seconds||60)}s</strong><small>Pulse poll {Number(s.pulse_poll_seconds||15)}s</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-indigo">#</div><div><span className="metric-label">Pulse revision</span><strong className="metric">{Number(s.pulse_revision||0)}</strong><small>{s.pulse_at?new Date(s.pulse_at).toLocaleString():'No pulse recorded'}</small></div></div>
   </div>
-
-  <section className="section card">
-   <div className="section-head"><div><div className="eyebrow">Emergency control</div><h2>Authority lockdown</h2><p className="muted">Emergency lockdown stops external License Manager v1 authority APIs without locking you out of this admin panel. Use this only for an incident that requires an immediate authority shutdown.</p></div><span className={lockdown.locked?'badge badge-red':'badge'}>{lockdown.locked?'LOCKED':'AVAILABLE'}</span></div>
-   {lockdown.locked?<div className="policy-status"><div><strong>External authority is locked down</strong><small>{lockdown.reason||'No reason recorded'}{lockdown.lockedAt?' · '+new Date(lockdown.lockedAt).toLocaleString():''}</small></div></div>:<div className="muted">No emergency lockdown is active.</div>}
-   {canManage&&<div className="policy-grid" style={{marginTop:16}}>
-    {lockdown.locked?<form action={updateEmergencyLockdown}>
-     <input type="hidden" name="lockdown_action" value="disable"/>
-     <label><span>Recovery reason</span><input className="input" name="reason" defaultValue="Owner recovery from License Manager"/></label>
-     <div className="policy-submit"><button className="button">Turn off emergency lockdown</button></div>
-    </form>:<form action={updateEmergencyLockdown}>
-     <input type="hidden" name="lockdown_action" value="enable"/>
-     <label><span>Lockdown reason</span><input className="input" name="reason" required placeholder="Required incident reason"/></label>
-     <div className="policy-submit"><button className="button danger">Enable emergency lockdown</button></div>
-    </form>}
-   </div>}
-  </section>
 
   <section className="section">
    <div className="section-head"><div><div className="eyebrow">Runtime authority</div><h2>API controls</h2><p className="muted">These switches directly control licensing, release and deployment authority, including Base, Update and rollback authorization. Changes are audited and pulse connected runtimes when required.</p></div></div>
