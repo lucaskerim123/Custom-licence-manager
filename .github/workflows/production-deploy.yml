@@ -123,8 +123,17 @@ jobs:
       - name: Build exact production artifact without deploying
         run: vercel build --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
 
-      - name: Inspect exact prebuilt production artifact
-        run: vercel deploy --prebuilt --dry --format=json --prod --yes --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
+      - name: Verify prebuilt production artifact locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .vercel/output/config.json
+          test -d .vercel/output/functions -o -d .vercel/output/static
+          node - <<'NODE'
+          const fs=require('fs');
+          const config=JSON.parse(fs.readFileSync('.vercel/output/config.json','utf8'));
+          if(Number(config.version)!==3) throw new Error('Unexpected Vercel Build Output API version');
+          NODE
 
       - name: Deploy exact validated prebuilt artifact to production
         id: deploy
@@ -137,8 +146,5 @@ jobs:
             *) echo "::error::Vercel did not return a production deployment URL"; exit 1 ;;
           esac
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
-
-      - name: Report deployed commit
-        run: |
           echo "Production deployment completed for immutable commit $GITHUB_SHA."
-          echo "Deployment: ${{ steps.deploy.outputs.url }}"
+          echo "Deployment: $deployment_url"
