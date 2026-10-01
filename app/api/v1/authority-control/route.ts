@@ -1,7 +1,7 @@
 import {NextResponse} from 'next/server';
-import {integrationAuthorized} from '../../../../../lib/auth';
-import {getSettings,setSetting,updateRuntimePolicy,type SettingField} from '../../../../../lib/core/settings';
-import {getEmergencyLockdown} from '../../../../../lib/core/lockdown';
+import {integrationAuthorized} from '../../../../lib/auth';
+import {getSettings,setSetting,updateRuntimePolicy,type SettingField} from '../../../../lib/core/settings';
+import {getEmergencyLockdown} from '../../../../lib/core/lockdown';
 
 const fields:SettingField[]=['system_enabled','licensing_enabled','maintenance_mode','customer_self_unlock_enabled','release_system_enabled','deployment_enabled','base_deployment_enabled','update_deployment_enabled','rollback_enabled'];
 
