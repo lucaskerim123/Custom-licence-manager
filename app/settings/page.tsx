@@ -79,15 +79,16 @@ async function resetReleaseLab(formData:FormData){
  const confirmation=String(formData.get('confirmation')||'').trim();
  if(confirmation!=='RESET RELEASES TO V1.0.0')return;
  const pool=db();
- await pool.query('begin');
+ const client=await pool.connect();
  try{
-  const releaseCount=Number((await pool.query("select count(*)::int count from releases")).rows[0]?.count||0);
-  const deploymentEventCount=Number((await pool.query("select count(*)::int count from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')")).rows[0]?.count||0);
-  const activationCount=Number((await pool.query("select count(*)::int count from activations where product_version is not null or last_deployment_id is not null or last_deployment_url is not null or deployment_count<>0 or coalesce(current_components,'{}'::jsonb)<>'{}'::jsonb")).rows[0]?.count||0);
+  await client.query('begin');
+  const releaseCount=Number((await client.query("select count(*)::int count from releases")).rows[0]?.count||0);
+  const deploymentEventCount=Number((await client.query("select count(*)::int count from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')")).rows[0]?.count||0);
+  const activationCount=Number((await client.query("select count(*)::int count from activations where product_version is not null or last_deployment_id is not null or last_deployment_url is not null or deployment_count<>0 or coalesce(current_components,'{}'::jsonb)<>'{}'::jsonb")).rows[0]?.count||0);
 
-  await pool.query("delete from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')");
-  await pool.query('delete from releases');
-  await pool.query(`update activations
+  await client.query("delete from deployment_events where action in ('deploy','base_update','update','redeploy','rollback')");
+  await client.query('delete from releases');
+  await client.query(`update activations
     set product_version=null,
         last_deployment_id=null,
         last_deployment_url=null,
@@ -95,7 +96,7 @@ async function resetReleaseLab(formData:FormData){
         last_operation=null,
         deployment_count=0,
         current_components='{}'::jsonb`);
-  await pool.query(
+  await client.query(
    `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
     values($1,$2,'release_lab.reset','system','release-lab',$3)`,
    [user.id,user.email,JSON.stringify({
@@ -108,10 +109,12 @@ async function resetReleaseLab(formData:FormData){
     audit_history_deleted:false,
    })]
   );
-  await pool.query('commit');
+  await client.query('commit');
  }catch(error){
-  await pool.query('rollback');
+  await client.query('rollback').catch(()=>{});
   throw error;
+ }finally{
+  client.release();
  }
  revalidatePath('/settings');revalidatePath('/releases');revalidatePath('/installations');revalidatePath('/');
 }
