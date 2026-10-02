@@ -19,7 +19,7 @@ const BASE_DATABASE_RUNTIME_ACCESS_CONTRACT={
  serverFullAccessTables:['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log','orbitfs_profile_state','orbitfs_schema_migrations'],
  restPreflightTables:['orbitfs_addons'],
  serverPreflightTables:['orbitfs_schema_migrations']
-} as const;
+};
 
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
 function releaseValidationIdentity(row:any){return {source_sha:String(row.source_sha||''),checksum:String(row.checksum||''),artifact_run_id:Number(row.artifact_run_id||0),artifact_repo:String(row.artifact_repo||row.source_repo||''),artifact_tag:String(row.manifest?.artifactTag||''),artifact_name:String(row.artifact_name||'')};}
