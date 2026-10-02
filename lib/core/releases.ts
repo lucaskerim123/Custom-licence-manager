@@ -30,10 +30,14 @@ export function withAuthoritativeReleaseRuntimeAccess(row:any){
 }
 
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
-function releaseValidationIdentity(row:any){return {source_sha:String(row.source_sha||''),checksum:String(row.checksum||''),artifact_run_id:Number(row.artifact_run_id||0),artifact_repo:String(row.artifact_repo||row.source_repo||''),artifact_tag:String(row.manifest?.artifactTag||''),artifact_name:String(row.artifact_name||'')};}
+function databaseRuntimeAccessIdentity(){return createHash('sha256').update(JSON.stringify(authoritativeDatabaseRuntimeAccess())).digest('hex');}
+function releaseValidationIdentity(row:any){return {source_sha:String(row.source_sha||''),checksum:String(row.checksum||''),artifact_run_id:Number(row.artifact_run_id||0),artifact_repo:String(row.artifact_repo||row.source_repo||''),artifact_tag:String(row.manifest?.artifactTag||''),artifact_name:String(row.artifact_name||''),database_runtime_access_contract_sha256:String(row.release_type||'')==='base'?databaseRuntimeAccessIdentity():''};}
 function validationIdentityMatches(row:any){
  const expected=releaseValidationIdentity(row),actual=row.manifest?.validation?.identity;
- return Boolean(actual&&expected.source_sha&&expected.checksum&&expected.artifact_run_id&&expected.artifact_repo&&expected.artifact_tag&&expected.artifact_name&&actual.source_sha===expected.source_sha&&actual.checksum===expected.checksum&&Number(actual.artifact_run_id)===expected.artifact_run_id&&String(actual.artifact_repo||'')===expected.artifact_repo&&String(actual.artifact_tag||'')===expected.artifact_tag&&String(actual.artifact_name||'')===expected.artifact_name);
+ const base=String(row.release_type||'')==='base';
+ const legacyPublishedBase=base&&!String(actual?.database_runtime_access_contract_sha256||'')&&['published','superseded','disabled'].includes(String(row.status||''));
+ const runtimeAccessIdentityMatches=!base||legacyPublishedBase||String(actual?.database_runtime_access_contract_sha256||'')===expected.database_runtime_access_contract_sha256;
+ return Boolean(actual&&expected.source_sha&&expected.checksum&&expected.artifact_run_id&&expected.artifact_repo&&expected.artifact_tag&&expected.artifact_name&&actual.source_sha===expected.source_sha&&actual.checksum===expected.checksum&&Number(actual.artifact_run_id)===expected.artifact_run_id&&String(actual.artifact_repo||'')===expected.artifact_repo&&String(actual.artifact_tag||'')===expected.artifact_tag&&String(actual.artifact_name||'')===expected.artifact_name&&runtimeAccessIdentityMatches);
 }
 function validationManifest(row: any, checks: any[], status: 'passed' | 'failed') { return { ...(row.manifest || {}), validation: { status, checked_at: new Date().toISOString(), identity:releaseValidationIdentity(row), checks } }; }
 function inspectPackageFiles(files:any[],options:{label:string;componentMode?:'engine-v3'|'none'}){
