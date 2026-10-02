@@ -275,6 +275,10 @@ async function scanPackage(row:any,bytes:Buffer){
       ];
       const missingRuntimeFiles=requiredRuntimeFiles.filter((path)=>!baseFilePaths.has(path));
       checks.push({key:'package_base_runtime_files',ok:missingRuntimeFiles.length===0,message:missingRuntimeFiles.length?'Base artifact is missing required runtime/deployer files: '+missingRuntimeFiles.join(', '):'Base artifact contains the required runtime/deployer files.'});
+      const declaredBaseEngineProtocol=pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol;
+      const baseEngineProtocol=declaredBaseEngineProtocol===undefined?LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL:Number(declaredBaseEngineProtocol);
+      const baseEngineProtocolOk=Number.isInteger(baseEngineProtocol)&&baseEngineProtocol>=1;
+      checks.push({key:'package_base_engine_deployer_protocol',ok:baseEngineProtocolOk,message:baseEngineProtocolOk?`Base declares Inner Engine deployer protocol ${baseEngineProtocol}.`:'Base artifact declares an invalid Inner Engine deployer protocol.'});
     }
     const isEngineV3=pkg.format==='orbitfs-engine-release-v3';
     const inspected=inspectPackageFiles(files,{label:'Release package',componentMode:isEngineV3?'engine-v3':'none'});
@@ -307,8 +311,10 @@ function baseDatabaseManifestPatch(row:any,bytes:Buffer){
     if(!databaseSchemaVersion||databaseSchemaPath!=='supabase/customer-schema.sql'||!/^[a-f0-9]{64}$/.test(databaseSchemaSha256)||!Number.isInteger(databaseMigrationCount)||databaseMigrationCount<1||!/^\d{14}$/.test(databaseLatestMigration)||schemaFile?.encoding!=='base64'||typeof schemaFile?.data!=='string'||!migrationChain.valid||migrationChain.rows.length!==databaseMigrationCount||migrationChain.rows.at(-1)?.id!==databaseLatestMigration)return null;
     const schemaBytes=Buffer.from(schemaFile.data,'base64');
     if(createHash('sha256').update(schemaBytes).digest('hex')!==databaseSchemaSha256)return null;
-    const declaredEngineProtocol=Number(pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol??LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL);
-    const engineDeployerProtocol=Number.isInteger(declaredEngineProtocol)&&declaredEngineProtocol>=1?declaredEngineProtocol:LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL;
+    const rawEngineProtocol=pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol;
+    const declaredEngineProtocol=rawEngineProtocol===undefined?LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL:Number(rawEngineProtocol);
+    if(!Number.isInteger(declaredEngineProtocol)||declaredEngineProtocol<1)return null;
+    const engineDeployerProtocol=declaredEngineProtocol;
     return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows,databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess(),engineDeployerProtocol};
   }catch{return null;}
 }
