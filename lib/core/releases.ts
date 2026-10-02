@@ -450,7 +450,7 @@ export async function createRelease(input:{productId:string;channel:string;versi
  const incomingManifest={...(input.manifest||{}),components:canonicalComponents(input.manifest?.components,input.releaseType)};
  const existing=(await pool.query(
   `select * from releases
-   where product_id=$1 and channel=$2 and version=$3 and release_type=$4 and archived_at is null
+   where product_id=$1 and channel=$2 and version=$3 and release_type=$4
    order by revision desc,created_at desc limit 1`,
   [input.productId,input.channel,input.version,input.releaseType]
  )).rows[0];
@@ -459,8 +459,7 @@ export async function createRelease(input:{productId:string;channel:string;versi
   const sameArtifact=Boolean(
    String(existing.checksum||'')&&String(input.checksum||'')&&String(existing.checksum)===String(input.checksum)&&
    String(existing.source_sha||'')===String(input.sourceSha||'')&&
-   String(existing.artifact_repo||'')===String(input.artifactRepo||'')&&
-   Number(existing.artifact_run_id||0)===Number(input.artifactRunId||0)
+   String(existing.artifact_repo||'')===String(input.artifactRepo||'')
   );
   if(existing.status==='published'&&sameArtifact)return existing;
 
