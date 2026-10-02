@@ -529,7 +529,7 @@ export async function createRelease(input:{productId:string;channel:string;versi
   delete manifest.rollback_source_release_id;
   const result=await pool.query(
    `insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',null,'pending',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',null,'pending',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) returning *`,
    [input.productId,input.channel,input.version,input.releaseType,input.sourceRepo??existing.source_repo,input.sourceRef??existing.source_ref,input.artifactUrl??null,input.checksum??null,input.notes??existing.notes??null,input.deploymentStatus??'not_started',input.sourceSha??null,input.artifactName??null,input.artifactRepo??null,input.artifactRunId??null,input.vercelReady??false,input.supabaseReady??false,input.customerPublicationRepo??existing.customer_publication_repo??null,manifest,nextRevision,existing.id]
   );
   const row=result.rows[0];
