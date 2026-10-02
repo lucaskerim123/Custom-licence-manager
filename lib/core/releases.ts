@@ -237,6 +237,12 @@ async function scanPackage(row:any,bytes:Buffer){
         'src/routes/api/engine-license/+server.ts',
         'src/routes/api/license/activate/+server.ts',
         'src/routes/api/license/status/+server.ts',
+        'src/hooks.server.ts',
+        'src/routes/setup/+page.svelte',
+        'src/routes/setup/owner/+page.svelte',
+        'src/routes/api/setup/[...rest]/+server.ts',
+        'src/routes/api/setup/status/+server.ts',
+        'src/routes/api/setup/owner/+server.ts',
         'src/routes/api/store/update-engine/+server.ts'
       ];
       const missingRuntimeFiles=requiredRuntimeFiles.filter((path)=>!baseFilePaths.has(path));
