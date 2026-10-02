@@ -298,10 +298,26 @@ async function scanPackage(row:any,bytes:Buffer){
           'ORBITFS_DATABASE_RUNTIME_ACCESS_CONTRACT',
           'ENGINE_DATABASE_RUNTIME_ACCESS_REPAIR_UNAVAILABLE',
           'runtimeSecretProbeTable',
-          'repairEngineDatabaseRuntimeAccess'
+          'repairEngineDatabaseRuntimeAccess',
+          'ORBITFS_SUPABASE_CONNECTION_ATTESTATION',
+          'ENGINE_SUPABASE_PROJECT_MISMATCH',
+          'ENGINE_SUPABASE_PUBLISHABLE_KEY_MISMATCH',
+          'ENGINE_SUPABASE_SERVER_KEY_MISMATCH',
+          'ENGINE_DATABASE_PUBLISHABLE_KEY_REJECTED',
+          'ENGINE_DATABASE_SERVER_KEY_REJECTED'
         ].every((marker)=>source.includes(marker))&&!source.includes('legacy-service-key-fallback');
       }
       checks.push({key:'package_base_inner_deployer_database_contract',ok:innerDeployerRuntimeAccessOk,message:innerDeployerRuntimeAccessOk?'Inner Engine deployer carries the restricted runtime-access repair, secret probe and no-service-key-fallback contract.':'Inner Engine deployer must repair/probe restricted runtime DB access and must not contain the legacy service-key fallback.'});
+      const environmentFile=files.find((file:any)=>String(file?.file||'')==='deployment/base-environment.json');
+      let supabaseConnectionAttestationOk=false;
+      if(environmentFile?.encoding==='base64'&&typeof environmentFile?.data==='string'){
+        try{
+          const environment=JSON.parse(Buffer.from(environmentFile.data,'base64').toString('utf8'));
+          const names=new Set((Array.isArray(environment?.variables)?environment.variables:[]).map((item:any)=>String(item?.name||'')));
+          supabaseConnectionAttestationOk=['SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SECRET_KEY','ORBITFS_SUPABASE_CONNECTION_ATTESTATION','ORBITFS_DB_SECRET'].every((name)=>names.has(name));
+        }catch{}
+      }
+      checks.push({key:'package_base_supabase_connection_attestation',ok:supabaseConnectionAttestationOk,message:supabaseConnectionAttestationOk?'Base deployment environment declares the Billing-to-Base Supabase connection attestation.':'Base deployment environment must declare the Supabase connection attestation and required Supabase credentials.'});
       const declaredBaseEngineProtocol=pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol;
       const baseEngineProtocol=declaredBaseEngineProtocol===undefined?LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL:Number(declaredBaseEngineProtocol);
       const baseEngineProtocolOk=Number.isInteger(baseEngineProtocol)&&baseEngineProtocol>=1;
