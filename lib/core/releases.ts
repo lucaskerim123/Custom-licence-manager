@@ -21,6 +21,14 @@ const BASE_DATABASE_RUNTIME_ACCESS_CONTRACT={
  serverPreflightTables:['orbitfs_schema_migrations']
 };
 
+function authoritativeDatabaseRuntimeAccess(){
+ return {...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT,publicReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.publicReadTables],authenticatedReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.authenticatedReadTables],serverFullAccessTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverFullAccessTables],restPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.restPreflightTables],serverPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverPreflightTables]};
+}
+export function withAuthoritativeReleaseRuntimeAccess(row:any){
+ if(!row||String(row.release_type||'')!=='base')return row;
+ return {...row,manifest:{...(row.manifest&&typeof row.manifest==='object'?row.manifest:{}),databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess()}};
+}
+
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
 function releaseValidationIdentity(row:any){return {source_sha:String(row.source_sha||''),checksum:String(row.checksum||''),artifact_run_id:Number(row.artifact_run_id||0),artifact_repo:String(row.artifact_repo||row.source_repo||''),artifact_tag:String(row.manifest?.artifactTag||''),artifact_name:String(row.artifact_name||'')};}
 function validationIdentityMatches(row:any){
@@ -291,7 +299,7 @@ function baseDatabaseManifestPatch(row:any,bytes:Buffer){
     if(!databaseSchemaVersion||databaseSchemaPath!=='supabase/customer-schema.sql'||!/^[a-f0-9]{64}$/.test(databaseSchemaSha256)||!Number.isInteger(databaseMigrationCount)||databaseMigrationCount<1||!/^\d{14}$/.test(databaseLatestMigration)||schemaFile?.encoding!=='base64'||typeof schemaFile?.data!=='string'||!migrationChain.valid||migrationChain.rows.length!==databaseMigrationCount||migrationChain.rows.at(-1)?.id!==databaseLatestMigration)return null;
     const schemaBytes=Buffer.from(schemaFile.data,'base64');
     if(createHash('sha256').update(schemaBytes).digest('hex')!==databaseSchemaSha256)return null;
-    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows,databaseRuntimeAccess:{...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT,publicReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.publicReadTables],authenticatedReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.authenticatedReadTables],serverFullAccessTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverFullAccessTables],restPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.restPreflightTables],serverPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverPreflightTables]}};
+    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows,databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess()};
   }catch{return null;}
 }
 async function checkArtifact(row: any) {
@@ -407,8 +415,8 @@ async function checkWorkflow(row: any) {
     return { key: 'ci', ok: false, message: error instanceof Error ? error.message : 'Release CI could not be verified.' };
   }
 }
-export async function listReleases(includeArchived=false){const where=includeArchived?'':'where r.archived_at is null';return(await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id ${where} order by r.created_at desc`)).rows;}
-export async function getLatestRelease(productSlug:string,channel='stable',releaseType:'base'|'update'='update'){const result=await db().query(`select r.id,r.version,r.channel,r.release_type,r.artifact_url,r.checksum,r.source_repo,r.source_ref,r.source_sha,r.artifact_name,r.artifact_repo,r.artifact_run_id,r.vercel_ready,r.supabase_ready,r.deployment_status,r.published_at,r.manifest,p.slug product from releases r join products p on p.id=r.product_id where p.slug=$1 and p.status='active' and r.channel=$2 and r.release_type=$3 and r.status='published' and r.review_status='approved' order by r.published_at desc nulls last,r.created_at desc limit 1`,[productSlug,channel,releaseType]);return result.rows[0]??null;}
+export async function listReleases(includeArchived=false){const where=includeArchived?'':'where r.archived_at is null';return(await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id ${where} order by r.created_at desc`)).rows.map(withAuthoritativeReleaseRuntimeAccess);}
+export async function getLatestRelease(productSlug:string,channel='stable',releaseType:'base'|'update'='update'){const result=await db().query(`select r.id,r.version,r.channel,r.release_type,r.artifact_url,r.checksum,r.source_repo,r.source_ref,r.source_sha,r.artifact_name,r.artifact_repo,r.artifact_run_id,r.vercel_ready,r.supabase_ready,r.deployment_status,r.published_at,r.manifest,p.slug product from releases r join products p on p.id=r.product_id where p.slug=$1 and p.status='active' and r.channel=$2 and r.release_type=$3 and r.status='published' and r.review_status='approved' order by r.published_at desc nulls last,r.created_at desc limit 1`,[productSlug,channel,releaseType]);return withAuthoritativeReleaseRuntimeAccess(result.rows[0]??null);}
 export async function createRelease(input:{productId:string;channel:string;version:string;releaseType:'base'|'update';sourceRepo?:string|null;sourceRef?:string|null;artifactUrl?:string|null;checksum?:string|null;notes?:string|null;publish?:boolean;actorUserId?:string|null;actor?:string;reviewStatus?:'pending'|'approved'|'rejected';deploymentStatus?:'not_started'|'queued'|'deploying'|'deployed'|'failed';sourceSha?:string|null;artifactName?:string|null;artifactRepo?:string|null;artifactRunId?:number|null;vercelReady?:boolean;supabaseReady?:boolean;customerPublicationRepo?:string|null;manifest?:any;revision?:number;supersedesReleaseId?:string|null}){
  const pool=db();
  const settings=(await pool.query('select system_enabled,release_system_enabled,deployment_enabled from system_settings where id=true')).rows[0];
