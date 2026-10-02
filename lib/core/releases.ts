@@ -20,13 +20,17 @@ const BASE_DATABASE_RUNTIME_ACCESS_CONTRACT={
  restPreflightTables:['orbitfs_addons'],
  serverPreflightTables:['orbitfs_schema_migrations']
 };
+const LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL=1;
 
 function authoritativeDatabaseRuntimeAccess(){
  return {...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT,publicReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.publicReadTables],authenticatedReadTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.authenticatedReadTables],serverFullAccessTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverFullAccessTables],restPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.restPreflightTables],serverPreflightTables:[...BASE_DATABASE_RUNTIME_ACCESS_CONTRACT.serverPreflightTables]};
 }
 export function withAuthoritativeReleaseRuntimeAccess(row:any){
  if(!row||String(row.release_type||'')!=='base')return row;
- return {...row,manifest:{...(row.manifest&&typeof row.manifest==='object'?row.manifest:{}),databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess()}};
+ const manifest=row.manifest&&typeof row.manifest==='object'?row.manifest:{};
+ const declared=Number(manifest.engineDeployerProtocol||0);
+ const engineDeployerProtocol=Number.isInteger(declared)&&declared>=1?declared:LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL;
+ return {...row,manifest:{...manifest,databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess(),engineDeployerProtocol}};
 }
 
 function canonicalComponents(value: unknown, releaseType: 'base' | 'update') { const values = Array.isArray(value) ? value.map((x) => String(x).trim().toLowerCase()).filter(Boolean) : []; if (releaseType === 'base') return ['base']; const mapped = values.map((x) => x === 'core' || x === 'orbitfs_base' ? 'base' : x === 'orbitfs_mcp' ? 'mcp' : x === 'orbitfs_apex' ? 'apex' : x === 'orbitfs_studio' ? 'studio' : x); return [...new Set(mapped)]; }
@@ -303,7 +307,9 @@ function baseDatabaseManifestPatch(row:any,bytes:Buffer){
     if(!databaseSchemaVersion||databaseSchemaPath!=='supabase/customer-schema.sql'||!/^[a-f0-9]{64}$/.test(databaseSchemaSha256)||!Number.isInteger(databaseMigrationCount)||databaseMigrationCount<1||!/^\d{14}$/.test(databaseLatestMigration)||schemaFile?.encoding!=='base64'||typeof schemaFile?.data!=='string'||!migrationChain.valid||migrationChain.rows.length!==databaseMigrationCount||migrationChain.rows.at(-1)?.id!==databaseLatestMigration)return null;
     const schemaBytes=Buffer.from(schemaFile.data,'base64');
     if(createHash('sha256').update(schemaBytes).digest('hex')!==databaseSchemaSha256)return null;
-    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows,databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess()};
+    const declaredEngineProtocol=Number(pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol??LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL);
+    const engineDeployerProtocol=Number.isInteger(declaredEngineProtocol)&&declaredEngineProtocol>=1?declaredEngineProtocol:LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL;
+    return {databaseSchemaVersion,databaseSchemaPath,databaseSchemaSha256,databaseMigrationCount,databaseLatestMigration,databaseMigrations:migrationChain.rows,databaseRuntimeAccess:authoritativeDatabaseRuntimeAccess(),engineDeployerProtocol};
   }catch{return null;}
 }
 async function checkArtifact(row: any) {
