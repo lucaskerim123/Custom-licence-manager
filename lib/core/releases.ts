@@ -194,12 +194,19 @@ async function scanPackage(row:any,bytes:Buffer){
       const packageSchemaHash=String(pkg.databaseSchemaSha256||pkg.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
       const releaseSchemaHash=String(row.manifest?.databaseSchemaSha256||row.manifest?.releaseInfo?.databaseSchemaSha256||'').trim().toLowerCase();
       const schemaFile=files.find((file:any)=>String(file?.file||'')===schemaPath);
-      let actualSchemaHash='',schemaPayloadOk=false,schemaReplaySafe=false,schemaReplayMessage='Customer DB snapshot could not be inspected.';
+      let actualSchemaHash='',schemaPayloadOk=false,schemaReplaySafe=false,schemaReplayMessage='Customer DB snapshot could not be inspected.',schemaRuntimeAccessOk=false;
       if(schemaFile?.data&&schemaFile?.encoding==='base64'){
         const bytes=Buffer.from(schemaFile.data,'base64');
         actualSchemaHash=createHash('sha256').update(bytes).digest('hex');
         const sql=bytes.toString('utf8');
         schemaPayloadOk=bytes.length>0&&['orbitfs_users','orbitfs_workspaces','orbitfs_workspace_members','orbitfs_files','orbitfs_settings','orbitfs_license','orbitfs_addons','orbitfs_audit_log'].every((name)=>sql.includes(name));
+        schemaRuntimeAccessOk=[
+          'orbitfs_repair_runtime_access',
+          'orbitfs_runtime_access_probe',
+          'private.orbitfs_server_secret_valid',
+          'orbitfs runtime secret access',
+          'orbitfs runtime secret required'
+        ].every((marker)=>sql.includes(marker));
         const obsoleteProfileConflict=/on\s+conflict\s*\(\s*workspace_id\s*,\s*user_id\s*\)\s+do\s+nothing/i.test(sql);
         const unsafeUniqueAdds=[...sql.matchAll(/alter\s+table\s+([a-z0-9_.]+)\s+add\s+constraint\s+([a-z0-9_]+)\s+unique\s*\(/ig)].filter((match)=>{
           const before=sql.slice(Math.max(0,(match.index||0)-300),match.index||0).toLowerCase();
@@ -256,6 +263,7 @@ async function scanPackage(row:any,bytes:Buffer){
       checks.push({key:'database_migration_chain',ok:migrationChainOk,message:migrationChainOk?`Base artifact contains ${migrationChain.rows.length} verified migration file(s) through ${latestMigration}.`:'Base artifact migration files must exactly match databaseMigrationCount/databaseLatestMigration and pass size/SHA-256 verification.'});
       checks.push({key:'database_schema_snapshot',ok:databaseSnapshotOk,message:databaseSnapshotOk?`Base artifact contains the verified customer DB snapshot (${migrationCount} migrations, latest ${latestMigration}).`:'Base artifact must contain a checksummed supabase/customer-schema.sql generated from the authoritative migration chain.'});
       checks.push({key:'database_schema_replay_safety',ok:schemaReplaySafe,message:schemaReplayMessage});
+      checks.push({key:'database_runtime_secret_contract',ok:schemaRuntimeAccessOk,message:schemaRuntimeAccessOk?'Customer DB snapshot contains the restricted Engine runtime-secret repair and probe contract.':'Customer DB snapshot is missing the restricted Engine runtime-secret repair/probe contract required by the Inner Engine deployer.'});
       const baseFilePaths=new Set(files.map((file:any)=>String(file?.file||'')));
       const requiredRuntimeFiles=[
         'deployment/base-environment.json',
@@ -282,6 +290,18 @@ async function scanPackage(row:any,bytes:Buffer){
       ];
       const missingRuntimeFiles=requiredRuntimeFiles.filter((path)=>!baseFilePaths.has(path));
       checks.push({key:'package_base_runtime_files',ok:missingRuntimeFiles.length===0,message:missingRuntimeFiles.length?'Base artifact is missing required runtime/deployer files: '+missingRuntimeFiles.join(', '):'Base artifact contains the required runtime/deployer files.'});
+      const innerDeployerFile=files.find((file:any)=>String(file?.file||'')==='src/lib/server/vercel-engine-provision.ts');
+      let innerDeployerRuntimeAccessOk=false;
+      if(innerDeployerFile?.encoding==='base64'&&typeof innerDeployerFile?.data==='string'){
+        const source=Buffer.from(innerDeployerFile.data,'base64').toString('utf8');
+        innerDeployerRuntimeAccessOk=[
+          'ORBITFS_DATABASE_RUNTIME_ACCESS_CONTRACT',
+          'ENGINE_DATABASE_RUNTIME_ACCESS_REPAIR_UNAVAILABLE',
+          'orbitfs_runtime_access_probe',
+          'repairEngineDatabaseRuntimeAccess'
+        ].every((marker)=>source.includes(marker))&&!source.includes('legacy-service-key-fallback');
+      }
+      checks.push({key:'package_base_inner_deployer_database_contract',ok:innerDeployerRuntimeAccessOk,message:innerDeployerRuntimeAccessOk?'Inner Engine deployer carries the restricted runtime-access repair, secret probe and no-service-key-fallback contract.':'Inner Engine deployer must repair/probe restricted runtime DB access and must not contain the legacy service-key fallback.'});
       const declaredBaseEngineProtocol=pkg.engineDeployerProtocol??pkg.releaseInfo?.engineDeployerProtocol;
       const baseEngineProtocol=declaredBaseEngineProtocol===undefined?LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL:Number(declaredBaseEngineProtocol);
       const baseEngineProtocolOk=Number.isInteger(baseEngineProtocol)&&baseEngineProtocol>=1;
