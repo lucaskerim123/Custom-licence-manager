@@ -151,7 +151,7 @@ export default async function Settings(){
   <div className="grid dashboard-metrics api-metrics">
    <div className="card metric-card"><div className="metric-icon icon-green">⚡</div><div><span className="metric-label">Authority services</span><strong className="metric">{liveCount}/{serviceRows.length}</strong><small>{Boolean(s.system_enabled)?'Master authority enabled':'Master authority offline'}</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-red">◷</div><div><span className="metric-label">Runtime mode</span><strong className="metric api-mode-metric">{maintenance?'Maintenance':Boolean(s.licensing_enabled)?'Online':'Blocked'}</strong><small>License validation enforcement</small></div></div>
-   <div className="card metric-card"><div className="metric-icon icon-blue">⌁</div><div><span className="metric-label">Validation TTL</span><strong className="metric">{Number(s.validation_ttl_seconds||60)}s</strong><small>Pulse poll {Number(s.pulse_poll_seconds||15)}s</small></div></div>
+   <div className="card metric-card"><div className="metric-icon icon-blue">⌁</div><div><span className="metric-label">Validation TTL</span><strong className="metric">{Number(s.validation_ttl_seconds||300)}s</strong><small>Pulse poll {Number(s.pulse_poll_seconds||60)}s</small></div></div>
    <div className="card metric-card"><div className="metric-icon icon-indigo">#</div><div><span className="metric-label">Pulse revision</span><strong className="metric">{Number(s.pulse_revision||0)}</strong><small>{s.pulse_at?new Date(s.pulse_at).toLocaleString():'No pulse recorded'}</small></div></div>
   </div>
 
@@ -179,8 +179,8 @@ export default async function Settings(){
      <div className="policy-submit"><button className="button">Send targeted pulse</button></div>
     </form>}
     {canManage?<form className="policy-grid" action={updatePolicy}>
-     <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="5" max="86400" defaultValue={Number(s.validation_ttl_seconds||60)}/><b>sec</b></div></label>
-     <label><span>Pulse poll interval</span><div className="number-input"><input className="input" name="pulse_poll_seconds" type="number" min="5" max="3600" defaultValue={Number(s.pulse_poll_seconds||15)}/><b>sec</b></div></label>
+     <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="60" max="86400" defaultValue={Number(s.validation_ttl_seconds||300)}/><b>sec</b></div></label>
+     <label><span>Pulse poll interval</span><div className="number-input"><input className="input" name="pulse_poll_seconds" type="number" min="60" max="3600" defaultValue={Number(s.pulse_poll_seconds||60)}/><b>sec</b></div></label>
      <label><span>Failed validations before lock</span><div className="number-input"><input className="input" name="max_failed_validations" type="number" min="1" max="100" defaultValue={Number(s.max_failed_validations||3)}/><b>tries</b></div></label>
      <label><span>Offline grace</span><div className="number-input"><input className="input" name="offline_grace_seconds" type="number" min="0" max="604800" defaultValue={Number(s.offline_grace_seconds||0)}/><b>sec</b></div></label>
      <label className="toggle-line"><input type="checkbox" name="allow_offline_grace" defaultChecked={Boolean(s.allow_offline_grace)}/><span><b>Allow offline grace</b><small>Temporary use after a previously successful validation when the authority cannot be reached.</small></span></label>
