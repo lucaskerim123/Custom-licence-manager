@@ -28,11 +28,11 @@ export async function POST(request:Request){
     const sourceRepo=String(body.source_repo??body.sourceRepo??'').trim();
     const sourceRef=String(body.source_ref??body.sourceRef??'').trim();
     const expectedSource=releaseType==='base'
-      ? {repo:'lucaskerim123/V1-vercel-base',ref:'base-release'}
-      : {repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE'};
+      ? {repo:'remipetrovich-design/OrbitFS-Base-System',ref:'base-release'}
+      : {repo:'remipetrovich-design/OrbitFS_Engine',ref:'UPDATE_RELEASES'};
     if(sourceRepo!==expectedSource.repo||sourceRef!==expectedSource.ref)return NextResponse.json({error:'SOURCE_SYSTEM_MISMATCH',expected_repo:expectedSource.repo,expected_ref:expectedSource.ref},{status:400});
     const requestedPublicationRepo=String(body.customer_publication_repo??body.customerPublicationRepo??'').trim();
-    const defaultCustomerPublicationRepo='lucaskerim123/V2_Billing_Store';
+    const defaultCustomerPublicationRepo='remipetrovich-design/OrbitFS-Billing-Shopfront';
     if(requestedPublicationRepo&&requestedPublicationRepo!==defaultCustomerPublicationRepo)return NextResponse.json({error:'PUBLICATION_SYSTEM_MISMATCH',expected_repo:defaultCustomerPublicationRepo},{status:400});
     const row=await createRelease({
       productId:product.id,channel:String(body.channel||'stable').trim().toLowerCase(),version:String(body.version||'').trim(),releaseType:releaseType as 'base'|'update',
