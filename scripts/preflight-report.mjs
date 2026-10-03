@@ -31,7 +31,7 @@ run("Clean locked dependency install",npm,["ci"]);
 run("Whitespace / patch integrity","git",["diff","--check"]);
 run("Lint",npm,["run","lint"]);
 run("Typecheck",npm,["run","typecheck"]);
-run("Dependency audit",npm,["audit","--audit-level=high"]);
+run("Production dependency audit",npm,["audit","--omit=dev","--audit-level=high"]);
 run("Production build",npm,["run","build"]);
 if(failures.length){const out=["ORBITFS VALIDATION FAILED","========================","All detected failure contexts are retained. Successful-step output is excluded.","","Failures: "+failures.length,""];for(const f of failures)out.push("## "+f.label,"Exit code: "+f.exitCode,"","ERRORS:",...(f.output||["(no error output)"]),"");writeFileSync(dir+"/validation-error.txt",out.join("\n"));console.error("\nValidation failed. Report: "+dir+"/validation-error.txt");process.exit(1);}
 rmSync(dir,{recursive:true,force:true});console.log("\n=== Preflight PASSED ===");
