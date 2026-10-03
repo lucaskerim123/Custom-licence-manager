@@ -12,11 +12,11 @@ const DESTRUCTIVE_SQL=/\b(?:drop\s+table|drop\s+schema|truncate\s+(?:table\s+)?|
 const TRANSACTION_SQL=/\b(?:begin|commit|rollback)\s*;/i;
 
 const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={
-  base:['lucaskerim123/V1-vercel-base','remipetrovich-design/OrbitFS-Base-System'],
-  'engine-shared':['lucaskerim123/V1-vercel-engine','remipetrovich-design/OrbitFS_Engine'],
-  mcp:['lucaskerim123/V1-vercel-engine','remipetrovich-design/OrbitFS_Engine'],
-  apex:['lucaskerim123/V1-vercel-engine','remipetrovich-design/OrbitFS_Engine'],
-  studio:['lucaskerim123/V1-vercel-engine','remipetrovich-design/OrbitFS_Engine']
+  base:['lucaskerim123/V1-vercel-base'],
+  'engine-shared':['lucaskerim123/V1-vercel-engine'],
+  mcp:['lucaskerim123/V1-vercel-engine'],
+  apex:['lucaskerim123/V1-vercel-engine'],
+  studio:['lucaskerim123/V1-vercel-engine']
 };
 
 const MIGRATION_PATHS:Record<CustomerDatabaseComponent,RegExp>={
