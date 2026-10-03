@@ -108,7 +108,7 @@ export async function POST(request:Request){
   if(!release.checksum)return NextResponse.json({ok:false,code:'RELEASE_ARTIFACT_NOT_VERIFIED'},{status:409});
   const licenseId=String(body?.licenseId||body?.license_id||'').trim();
   if(!licenseId)return NextResponse.json({ok:false,code:'LICENSE_ID_REQUIRED',error:'No authoritative licence id was supplied for this installation.'},{status:403});
-  const license=(await db().query(`select l.id,l.status,l.expires_at,l.metadata,p.slug component from licenses l join products p on p.id=l.product_id where l.id=$1 and l.product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
+  const license=(await db().query(`select l.id,l.status,l.expires_at,l.metadata,l.customer_external_id,p.slug component from licenses l join products p on p.id=l.product_id where l.id=$1 and l.product_id=($2::uuid) limit 1`,[licenseId,release.product_id])).rows[0];
   if(!license)return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence does not belong to this release product.'},{status:403});
   if(license.status!=='active')return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:`The installation licence is ${license.status||'inactive'}; an active licence is required.`},{status:403});
   if(license.expires_at&&new Date(license.expires_at).getTime()<=Date.now())return NextResponse.json({ok:false,code:'LICENSE_NOT_ELIGIBLE_FOR_RELEASE',error:'The installation licence has expired.'},{status:403});
@@ -117,12 +117,14 @@ export async function POST(request:Request){
   let currentBase:any=null;
   if(installationId){
     activation=(await db().query('select id,status,product_version,last_deployment_id,last_deployment_url from activations where license_id=$1 and installation_id=$2 limit 1',[licenseId,installationId])).rows[0];
+    const customerReference=String(license.customer_external_id||'').trim();
     currentBase=(await db().query(
-      "select release_id,product_version,project_id,project_name,deployment_id,deployment_url,created_at from deployment_events where license_id=$1 and installation_id=$2 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' order by created_at desc limit 1",
-      [licenseId,installationId]
+      "select license_id,release_id,product_version,project_id,project_name,deployment_id,deployment_url,customer_identity,created_at from deployment_events where installation_id=$1 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' and (license_id=$2 or ($3<>'' and lower(coalesce(customer_identity->>'customerNumber',''))=lower($3))) order by created_at desc limit 1",
+      [installationId,licenseId,customerReference]
     )).rows[0]||null;
-    // Runtime key activation and deployment entitlement are separate concerns.
-    // Deployment continuity is proven by this licence's authoritative deployment history.
+    // Runtime licence rotation must not erase an installation's deployment history.
+    // A historical event from another licence is accepted only when its recorded
+    // Billing customer number matches the current authoritative licence customer.
   }
 
   const publishedApproved=release.status==='published'&&release.review_status==='approved'&&!release.archived_at;
@@ -134,8 +136,8 @@ export async function POST(request:Request){
   }else if(action==='rollback'){
     if(release.review_status!=='approved'||!installationId)return NextResponse.json({ok:false,code:'BASE_ROLLBACK_NOT_AUTHORIZED'},{status:409});
     const prior=(await db().query(
-      "select 1 from deployment_events where license_id=$1 and installation_id=$2 and release_id=$3 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' limit 1",
-      [licenseId,installationId,release.id]
+      "select 1 from deployment_events where installation_id=$1 and release_id=$2 and phase='completed' and action in ('deploy','base_update','redeploy','rollback') and coalesce(details->>'rollbackScope','base')='base' and (license_id=$3 or ($4<>'' and lower(coalesce(customer_identity->>'customerNumber',''))=lower($4))) limit 1",
+      [installationId,release.id,licenseId,String(license.customer_external_id||'').trim()]
     )).rows[0];
     if(!prior)return NextResponse.json({ok:false,code:'BASE_ROLLBACK_TARGET_NOT_INSTALLED'},{status:409});
   }else if(action==='base_update'){
