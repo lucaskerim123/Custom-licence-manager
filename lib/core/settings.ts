@@ -246,7 +246,7 @@ export async function toggleSetting(field:SettingField,actorUserId:string,actor:
 
 export async function getGithubProfile():Promise<GithubProfileName>{
   const current=await getSettings();
-  return String(current?.github_profile||'fallback').toLowerCase()==='primary'?'primary':'fallback';
+  return String(current?.github_profile||'primary').toLowerCase()==='primary'?'primary':'fallback';
 }
 
 const GITHUB_PROFILE_TARGETS:Record<GithubProfileName,{tokenEnv:string;repos:Array<{repo:string;ref:string}>}>={
@@ -332,7 +332,7 @@ export async function setGithubProfile(
   try{
     await client.query('begin');
     const current=(await client.query('select system_enabled,github_profile from system_settings where id=true for update')).rows[0];
-    const actual=String(current?.github_profile||'fallback').toLowerCase()==='primary'?'primary':'fallback';
+    const actual=String(current?.github_profile||'primary').toLowerCase()==='primary'?'primary':'fallback';
     if(Boolean(current?.system_enabled))throw new Error('Master Authority must be OFF before changing MAIN/FALLBACK mode');
     if(actual!==expected)throw new Error('Source mode changed since this page was loaded. Refresh before switching.');
     const updated=(await client.query('update system_settings set github_profile=$1,updated_at=now() where id=true returning *',[next])).rows[0];
