@@ -69,7 +69,7 @@ export async function authenticateApiKey(request: Request, requiredScope?: ApiSc
     if (client.status !== 'active') return null;
     const scopes = parseScopes(client.scopes);
     if (requiredScope && !scopeAllows(scopes, requiredScope)) return null;
-    // Avoid a database write on every authenticated machine request. last_used_at is retained only for historical compatibility.
+    // last_used_at is retained for compatibility but no longer written on every machine request.
     return { ...client, scopes };
   }
 

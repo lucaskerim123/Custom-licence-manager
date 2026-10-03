@@ -193,7 +193,7 @@ export default async function Settings(){
      <div className="policy-submit"><button className="button">Send targeted pulse</button></div>
     </form>}
     {canManage?<form className="policy-grid" action={updatePolicy}>
-     <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="60" max="86400" defaultValue={Number(s.validation_ttl_seconds||5400)}/><b>sec</b></div></label>
+     <label><span>Validation cache TTL</span><div className="number-input"><input className="input" name="validation_ttl_seconds" type="number" min="5" max="86400" defaultValue={Number(s.validation_ttl_seconds||5400)}/><b>sec</b></div></label>
      <label><span>Pulse poll interval</span><div className="number-input"><input className="input" name="pulse_poll_seconds" type="number" min="60" max="86400" defaultValue={Number(s.pulse_poll_seconds||5400)}/><b>sec</b></div></label>
      <label><span>Failed validations before lock</span><div className="number-input"><input className="input" name="max_failed_validations" type="number" min="1" max="100" defaultValue={Number(s.max_failed_validations||3)}/><b>tries</b></div></label>
      <label><span>Offline grace</span><div className="number-input"><input className="input" name="offline_grace_seconds" type="number" min="0" max="604800" defaultValue={Number(s.offline_grace_seconds||0)}/><b>sec</b></div></label>
