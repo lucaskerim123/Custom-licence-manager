@@ -28,13 +28,13 @@ const BASE_DATABASE_RUNTIME_ACCESS_CONTRACT={
  runtimeSecretProbeTable:'orbitfs_runtime_secret_probe'
 };
 const LEGACY_BASE_ENGINE_DEPLOYER_PROTOCOL=1;
-const LOCAL_BASE_REPO='remipetrovich-design/OrbitFS-Base-System';
+const LOCAL_BASE_REPO='lucaskerim123/V1-vercel-base';
 const LOCAL_BASE_REF='base-release';
-const LOCAL_ENGINE_REPO='remipetrovich-design/OrbitFS_Engine';
-const LOCAL_ENGINE_REF='UPDATE_RELEASES';
+const LOCAL_ENGINE_REPO='lucaskerim123/V1-vercel-engine';
+const LOCAL_ENGINE_REF='UPDATE_RELEASE';
 const LOCAL_SOURCE_REPOS=[LOCAL_BASE_REPO,LOCAL_ENGINE_REPO] as const;
-const LOCAL_BASE_ARTIFACT_REPO='remipetrovich-design/OrbitFS-Control-Centre';
-const LOCAL_GITHUB_TOKEN_ENV='ORBITFS_FALLBACK_GITHUB_TOKEN';
+const LOCAL_BASE_ARTIFACT_REPO='lucaskerim123/Dev-panel';
+const LOCAL_GITHUB_TOKEN_ENV='ORBITFS_RELEASE_DISPATCH_TOKEN';
 function expectedReleaseSource(releaseType:unknown){
  return String(releaseType||'').toLowerCase()==='base'
   ? {repo:LOCAL_BASE_REPO,ref:LOCAL_BASE_REF}
@@ -51,8 +51,8 @@ function assertLocalReleaseRow(row:any){
 }
 function expectedReleaseArtifactRepo(releaseType:unknown){
  return String(releaseType||'').toLowerCase()==='base'
-  ? 'remipetrovich-design/OrbitFS-Control-Centre'
-  : 'remipetrovich-design/OrbitFS_Engine';
+  ? 'lucaskerim123/Dev-panel'
+  : 'lucaskerim123/V1-vercel-engine';
 }
 
 function authoritativeDatabaseRuntimeAccess(){
