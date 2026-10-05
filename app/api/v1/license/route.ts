@@ -9,7 +9,8 @@ export async function GET(request:Request){
   const url=new URL(request.url);
   const customerExternalId=String(url.searchParams.get('customer_external_id')||'').trim();
   const params:any[]=[];
-  const where=customerExternalId?(params.push(customerExternalId),' where l.customer_external_id=$1'):'';
+  if(customerExternalId)params.push(customerExternalId);
+  const where=customerExternalId?' where l.customer_external_id=$1':'';
   const rows=(await db().query("select l.id,l.license_key_last4,l.product_id,l.customer_external_id,l.external_reference,l.status,l.issued_at,l.expires_at,l.metadata,l.customer_override,p.slug product_code,p.name product from licenses l join products p on p.id=l.product_id"+where+" order by l.issued_at desc",params)).rows;
   const ids=rows.map((row:any)=>String(row.id)).filter(Boolean);
   const activations=ids.length?(await db().query("select id,license_id,installation_id,status,product_version,first_seen_at,last_seen_at,last_provider,last_region,last_platform,last_architecture,last_client,last_client_version,last_deployment_id,last_deployment_url,last_deployment_status,last_operation,deployment_count,current_components from activations where license_id=any($1::uuid[]) order by last_seen_at desc nulls last",[ids])).rows:[];
