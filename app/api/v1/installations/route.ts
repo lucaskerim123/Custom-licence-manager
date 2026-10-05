@@ -29,7 +29,7 @@ export async function GET(request:Request){
        base.release_id base_release_id,base.product_version base_product_version,base.deployment_id base_deployment_id,
        base.deployment_url base_deployment_url,base.project_id base_project_id,base.project_name base_project_name,
        base.created_at base_completed_at,base.release_version base_release_version,base.release_channel base_release_channel,
-       upd.release_id update_release_id,upd.product_version update_product_version,upd.deployment_id update_deployment_id,
+       upd.action update_action,upd.release_id update_release_id,upd.product_version update_product_version,upd.deployment_id update_deployment_id,
        upd.deployment_url update_deployment_url,upd.created_at update_completed_at,
        upd.release_version update_release_version,upd.release_channel update_release_channel
      from activations a
@@ -47,11 +47,12 @@ export async function GET(request:Request){
        limit 1
      ) base on true
      left join lateral (
-       select e.release_id,e.product_version,e.deployment_id,e.deployment_url,e.created_at,
+       select e.action,e.release_id,e.product_version,e.deployment_id,e.deployment_url,e.created_at,
               r.version release_version,r.channel release_channel
        from deployment_events e
        left join releases r on r.id=e.release_id
-       where e.installation_id=a.installation_id and e.license_id=a.license_id and e.phase='completed' and e.action='update'
+       where e.installation_id=a.installation_id and e.license_id=a.license_id and e.phase='completed'
+         and (e.action='update' or (e.action='rollback' and coalesce(e.details->>'rollbackScope','base')='update'))
        order by e.created_at desc
        limit 1
      ) upd on true
@@ -101,7 +102,7 @@ export async function GET(request:Request){
         project_name:row.base_project_name,
         completed_at:row.base_completed_at,
       }:null,
-      current_update:row.update_release_id?{
+      current_update:row.update_action==='update'&&row.update_release_id?{
         release_id:row.update_release_id,
         product_version:row.update_product_version,
         release_version:row.update_release_version,
