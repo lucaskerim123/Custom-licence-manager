@@ -14,6 +14,7 @@ export async function POST(request:Request){
 
   if(!['lock','unlock'].includes(action))return NextResponse.json({ok:false,code:'UNSUPPORTED_INSTALLATION_CONTROL'},{status:400});
   if(!installationId)return NextResponse.json({ok:false,code:'INSTALLATION_ID_REQUIRED'},{status:400});
+  if(action==='lock'&&!reason)return NextResponse.json({ok:false,code:'INSTALLATION_LOCK_REASON_REQUIRED',error:'A deployment lock reason is required.'},{status:400});
 
   const params:any[]=[installationId];
   const licenseFilter=licenseId?' and license_id=$2':'';
