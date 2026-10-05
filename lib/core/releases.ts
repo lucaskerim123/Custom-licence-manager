@@ -1044,20 +1044,41 @@ export async function createPresentationRevision(id:string,input:any,actorUserId
 
 export async function republishRelease(id:string,actorUserId?:string|null,actor?:string){
  const pool=db();
- const source=(await pool.query('select * from releases where id=$1 limit 1',[id])).rows[0];
- if(!source)return null;
- assertKnownReleaseRow(source);
- if(source.status!=='withdrawn')throw new Error('Only a withdrawn release can be republished.');
- if(source.archived_at)throw new Error('Archived release history cannot be republished.');
- if(source.review_status!=='approved'||source.manifest?.validation?.status!=='passed'||!validationIdentityMatches(source))throw new Error('Withdrawn release must retain valid technical approval for this exact artifact before republishing.');
- const revision=Number((await pool.query('select coalesce(max(revision),0)::int revision from releases where product_id=$1 and channel=$2 and version=$3 and release_type=$4 and source_repo=$5',[source.product_id,source.channel,source.version,source.release_type,source.source_repo])).rows[0].revision||0)+1;
- const now=new Date().toISOString();
- const manifest={...(source.manifest||{}),republished_from:{release_id:source.id,revision:Number(source.revision||1),withdrawn_published_at:source.published_at||null,republish_prepared_at:now}};
- const result=await pool.query(`insert into releases(product_id,channel,version,release_type,source_repo,source_ref,artifact_url,checksum,notes,status,published_at,review_status,deployment_status,source_sha,artifact_name,artifact_repo,artifact_run_id,vercel_ready,supabase_ready,customer_publication_repo,manifest,revision,supersedes_release_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',null,'approved','not_started',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *`,
-  [source.product_id,source.channel,source.version,source.release_type,source.source_repo,source.source_ref,source.artifact_url,source.checksum,source.notes,source.source_sha,source.artifact_name,source.artifact_repo,source.artifact_run_id,source.vercel_ready,source.supabase_ready,source.customer_publication_repo,manifest,revision,source.id]);
- const row=result.rows[0];
- await pool.query(`insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.republish.prepare','release',$3,$4)`,[actorUserId??null,actor??'admin',row.id,JSON.stringify({withdrawn_release_id:source.id,version:source.version,channel:source.channel,release_type:source.release_type,revision,approval_preserved:true,validation_preserved:true})]);
- return row;
+ const client=await pool.connect();
+ try{
+  await client.query('BEGIN');
+  const source=(await client.query('select * from releases where id=$1 for update',[id])).rows[0];
+  if(!source){await client.query('ROLLBACK');return null;}
+  assertKnownReleaseRow(source);
+  if(source.release_type!=='update')throw new Error('Republish is currently supported for Update releases only.');
+  if(source.status!=='withdrawn')throw new Error('Only a withdrawn Update release can be republished.');
+  if(source.archived_at)throw new Error('Archived release history cannot be republished.');
+  if(source.review_status!=='approved'||source.manifest?.validation?.status!=='passed'||!validationIdentityMatches(source))throw new Error('Withdrawn Update must retain valid technical approval for this exact artifact before republishing.');
+
+  await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(source.product_id)+':'+String(source.channel)+':update:'+String(source.version)]);
+  const conflicts=(await client.query(
+   "select id from releases where product_id=$1 and channel=$2 and release_type='update' and version=$3 and source_repo=any($5::text[]) and status='published' and id<>$4 for update",
+   [source.product_id,source.channel,source.version,source.id,[...ALL_UPDATE_SOURCE_REPOS]]
+  )).rows;
+  if(conflicts.length){
+   await client.query("update releases set status='superseded' where id = any($1::uuid[])",[conflicts.map((row:any)=>row.id)]);
+  }
+
+  const republished=(await client.query(
+   "update releases set status='published',published_at=now(),deployment_status='queued' where id=$1 and status='withdrawn' returning *",
+   [source.id]
+  )).rows[0];
+  if(!republished)throw new Error('Withdrawn Update could not be republished.');
+  await client.query(
+   "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.republish','release',$3,$4)",
+   [actorUserId??null,actor??'admin',source.id,JSON.stringify({version:source.version,channel:source.channel,release_type:source.release_type,reused_release_id:true,replaced_published_release_ids:conflicts.map((row:any)=>row.id)})]
+  );
+  await client.query('COMMIT');
+  return republished;
+ }catch(error){
+  try{await client.query('ROLLBACK')}catch{}
+  throw error;
+ }finally{client.release();}
 }
 
 export async function withdrawRelease(id:string,actorUserId?:string|null,actor?:string){
