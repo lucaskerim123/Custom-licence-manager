@@ -18,6 +18,7 @@ export async function GET(request:Request){
   const u=new URL(request.url);
   const requested=Number(u.searchParams.get('limit')||250);
   const limit=Math.min(500,Math.max(1,Number.isFinite(requested)?requested:250));
+  const currentOnly=['1','true','yes'].includes(String(u.searchParams.get('current_only')||'').toLowerCase());
   const rows=(await db().query(
     `select
        a.id,a.license_id,a.installation_id,a.status,a.product_version,a.first_seen_at,a.last_seen_at,
@@ -56,9 +57,10 @@ export async function GET(request:Request){
        order by e.created_at desc
        limit 1
      ) upd on true
+     where ($2::boolean=false or a.status='active')
      order by a.last_seen_at desc nulls last,a.first_seen_at desc
      limit $1`,
-    [limit],
+    [limit,currentOnly],
   )).rows;
 
   const installations=rows.map((row:any)=>{
