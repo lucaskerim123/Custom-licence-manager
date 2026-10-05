@@ -21,11 +21,11 @@ const DATABASE_SOURCE_REPOS:Record<DatabaseSourceProfile,Record<CustomerDatabase
     studio:'lucaskerim123/V1-vercel-engine'
   },
   fallback:{
-    base:'remipetrovich-design/OrbitFS-Base-System',
-    'engine-shared':'remipetrovich-design/OrbitFS_Engine',
-    mcp:'remipetrovich-design/OrbitFS_Engine',
-    apex:'remipetrovich-design/OrbitFS_Engine',
-    studio:'remipetrovich-design/OrbitFS_Engine'
+    base:'lucaskerim123/V1-vercel-base',
+    'engine-shared':'lucaskerim123/V1-vercel-engine',
+    mcp:'lucaskerim123/V1-vercel-engine',
+    apex:'lucaskerim123/V1-vercel-engine',
+    studio:'lucaskerim123/V1-vercel-engine'
   }
 };
 const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={

@@ -38,8 +38,8 @@ const RELEASE_SYSTEMS:Record<ReleaseSourceProfile,{
   update:{repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE',artifactRepos:['lucaskerim123/V1-vercel-engine']},
  },
  fallback:{
-  base:{repo:'remipetrovich-design/OrbitFS-Base-System',ref:'base-release',artifactRepos:['remipetrovich-design/OrbitFS-Base-System','remipetrovich-design/OrbitFS-Control-Centre']},
-  update:{repo:'remipetrovich-design/OrbitFS_Engine',ref:'UPDATE_RELEASE',artifactRepos:['remipetrovich-design/OrbitFS_Engine']},
+  base:{repo:'lucaskerim123/V1-vercel-base',ref:'base-release',artifactRepos:['lucaskerim123/V1-vercel-base','lucaskerim123/Dev-panel']},
+  update:{repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE',artifactRepos:['lucaskerim123/V1-vercel-engine']},
  },
 };
 const ALL_BASE_SOURCE_REPOS=[RELEASE_SYSTEMS.primary.base.repo,RELEASE_SYSTEMS.fallback.base.repo] as const;
@@ -93,8 +93,8 @@ function releaseArtifactRepoAllowed(releaseType:unknown,sourceRepo:unknown,value
 function githubTokenCandidatesForRepo(repo:unknown){
  const profile=releaseProfileForRepo(repo);
  const names=profile==='fallback'
-  ?['ORBITFS_FALLBACK_GITHUB_TOKEN','GITHUB_RELEASE_TOKEN','ORBITFS_RELEASE_DISPATCH_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN','GITHUB_TOKEN']
-  :['ORBITFS_RELEASE_DISPATCH_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN','GITHUB_RELEASE_TOKEN','ORBITFS_FALLBACK_GITHUB_TOKEN','GITHUB_TOKEN'];
+  ?['ORBITFS_RELEASE_DISPATCH_TOKEN','GITHUB_RELEASE_TOKEN','ORBITFS_RELEASE_DISPATCH_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN','GITHUB_TOKEN']
+  :['ORBITFS_RELEASE_DISPATCH_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN','GITHUB_RELEASE_TOKEN','ORBITFS_RELEASE_DISPATCH_TOKEN','GITHUB_TOKEN'];
  return [...new Set(names.map(name=>String(process.env[name]||'').trim()).filter(Boolean).concat(''))];
 }
 async function githubFetchForRepo(repo:string,url:string,accept:string){
