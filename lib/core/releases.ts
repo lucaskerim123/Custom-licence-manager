@@ -4,6 +4,7 @@ import { db } from '../db';
 import { requireReleaseChannel } from './release-channels';
 import { compareOrbitReleaseVersions, isOrbitReleaseVersion, orbitReleaseVersionFamily } from './versioning';
 import { publishReleaseDatabasePackages, validateReleaseDatabasePackages } from './database-packages';
+import { getGithubProfile } from './settings';
 
 const ALLOWED_UPDATE_COMPONENTS = new Set(['base', 'mcp', 'apex', 'studio']);
 const MAX_ARTIFACT_BYTES = 75 * 1024 * 1024;
@@ -73,8 +74,7 @@ function assertKnownReleaseRow(row:any){
  return row;
 }
 async function activeReleaseProfile():Promise<ReleaseSourceProfile>{
- const row=(await db().query('select github_profile from system_settings where id=true')).rows[0];
- return String(row?.github_profile||'fallback').toLowerCase()==='primary'?'primary':'fallback';
+ return await getGithubProfile();
 }
 async function activeReleaseSource(releaseType:unknown){
  return releaseSourceForProfile(await activeReleaseProfile(),releaseType);
