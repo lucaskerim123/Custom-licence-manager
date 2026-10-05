@@ -1047,38 +1047,42 @@ export async function republishRelease(id:string,actorUserId?:string|null,actor?
  const client=await pool.connect();
  try{
   await client.query('BEGIN');
-  const source=(await client.query('select * from releases where id=$1 for update',[id])).rows[0];
-  if(!source){await client.query('ROLLBACK');return null;}
-  assertKnownReleaseRow(source);
-  if(source.release_type!=='update')throw new Error('Republish is currently supported for Update releases only.');
-  if(source.status!=='withdrawn')throw new Error('Only a withdrawn Update release can be republished.');
-  if(source.archived_at)throw new Error('Archived release history cannot be republished.');
-  if(source.review_status!=='approved'||source.manifest?.validation?.status!=='passed'||!validationIdentityMatches(source))throw new Error('Withdrawn Update must retain valid technical approval for this exact artifact before republishing.');
+  const row=(await client.query('select * from releases where id=$1 for update',[id])).rows[0];
+  if(!row){await client.query('ROLLBACK');return null;}
+  assertKnownReleaseRow(row);
+  if(row.status!=='withdrawn')throw new Error('Only a withdrawn release can be republished.');
+  if(row.archived_at)throw new Error('Archived release history cannot be republished.');
+  if(row.review_status!=='approved'||row.manifest?.validation?.status!=='passed'||!validationIdentityMatches(row))throw new Error('Withdrawn release must retain valid technical approval for this exact artifact before republishing.');
 
-  await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(source.product_id)+':'+String(source.channel)+':update:'+String(source.version)]);
-  const conflicts=(await client.query(
-   "select id from releases where product_id=$1 and channel=$2 and release_type='update' and version=$3 and source_repo=any($5::text[]) and status='published' and id<>$4 for update",
-   [source.product_id,source.channel,source.version,source.id,[...ALL_UPDATE_SOURCE_REPOS]]
-  )).rows;
-  if(conflicts.length){
-   await client.query("update releases set status='superseded' where id = any($1::uuid[])",[conflicts.map((row:any)=>row.id)]);
+  if(row.release_type==='update'){
+   await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(row.product_id)+':'+String(row.channel)+':update:'+String(row.version)]);
+   const other=(await client.query(
+    "select id from releases where product_id=$1 and channel=$2 and release_type='update' and version=$3 and status='published' and id<>$4 limit 1",
+    [row.product_id,row.channel,row.version,id]
+   )).rows[0];
+   if(other)throw new Error('Another revision of this Update version is already published. Withdraw it before republishing this release.');
+  }else if(row.release_type==='base'){
+   await client.query('select pg_advisory_xact_lock(hashtext($1))',[String(row.product_id)+':'+String(row.channel)+':base']);
+   const other=(await client.query(
+    "select id from releases where product_id=$1 and channel=$2 and release_type='base' and status='published' and id<>$3 limit 1",
+    [row.product_id,row.channel,id]
+   )).rows[0];
+   if(other)throw new Error('Another Base release is already published on this channel. Withdraw it before republishing this release.');
   }
 
-  const republished=(await client.query(
-   "update releases set status='published',published_at=now(),deployment_status='queued' where id=$1 and status='withdrawn' returning *",
-   [source.id]
+  const previousPublishedAt=row.published_at||null;
+  const result=(await client.query(
+   "update releases set status='published',review_status='approved',published_at=now(),deployment_status='queued' where id=$1 and status='withdrawn' returning *",
+   [id]
   )).rows[0];
-  if(!republished)throw new Error('Withdrawn Update could not be republished.');
+  if(!result)throw new Error('Release could not be republished.');
   await client.query(
    "insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details) values($1,$2,'release.republish','release',$3,$4)",
-   [actorUserId??null,actor??'admin',source.id,JSON.stringify({version:source.version,channel:source.channel,release_type:source.release_type,reused_release_id:true,replaced_published_release_ids:conflicts.map((row:any)=>row.id)})]
+   [actorUserId??null,actor??'admin',id,JSON.stringify({version:row.version,channel:row.channel,release_type:row.release_type,previous_published_at:previousPublishedAt,same_release_id:true})]
   );
   await client.query('COMMIT');
-  return republished;
- }catch(error){
-  try{await client.query('ROLLBACK')}catch{}
-  throw error;
- }finally{client.release();}
+  return result;
+ }catch(error){try{await client.query('ROLLBACK')}catch{}throw error}finally{client.release()}
 }
 
 export async function withdrawRelease(id:string,actorUserId?:string|null,actor?:string){
