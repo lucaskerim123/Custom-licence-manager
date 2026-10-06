@@ -31,9 +31,14 @@ function domainSelection(input:any,generatedDomain:string|null){
     if(mode==='custom'&&domainName.endsWith('.vercel.app'))throw Object.assign(new Error('Use Vercel address mode for .vercel.app addresses.'),{status:400,code:'PANEL_CUSTOM_DOMAIN_INVALID'});
   }
   const verified=mode==='generated'?true:input?.verified===true;
-  const expected=mode==='generated'?generatedDomain:domainName;
   const effective=httpsUrl(input?.effective_url??input?.effectiveUrl);
-  if(effective&&host(effective)!==host(expected))throw Object.assign(new Error('The reported effective Panel URL does not match the selected domain.'),{status:400,code:'PANEL_DOMAIN_EFFECTIVE_URL_MISMATCH'});
+  const effectiveHost=host(effective);
+  const selectedHost=mode==='generated'?host(generatedDomain):host(domainName);
+  const generatedHost=host(generatedDomain);
+  const allowedEffective=mode==='custom'&&!verified
+    ? new Set([selectedHost,generatedHost].filter(Boolean))
+    : new Set([selectedHost].filter(Boolean));
+  if(effective&&(!allowedEffective.size||!allowedEffective.has(effectiveHost)))throw Object.assign(new Error('The reported effective Panel URL does not match the selected domain state.'),{status:400,code:'PANEL_DOMAIN_EFFECTIVE_URL_MISMATCH'});
   return {mode,domain_name:domainName,verified,effective_url:effective};
 }
 async function activation(installationId:string,licenseId:string|null){
