@@ -30,6 +30,7 @@ export async function GET(request:Request){
     return {
       ...row,
       storage_status:row.status,
+      status:effectiveStatus,
       effective_status:effectiveStatus,
       canonical_status:effectiveStatus,
       components:entitlements,
@@ -58,7 +59,10 @@ export async function POST(request:Request){
     const expiresAt=rawExpiry?new Date(String(rawExpiry)):null;
     if(expiresAt&&Number.isNaN(expiresAt.getTime()))return NextResponse.json({error:'Invalid expiry date',code:'INVALID_EXPIRY'},{status:400});
     const suppliedMetadata=body?.metadata&&typeof body.metadata==='object'?body.metadata:{};const components=body?.components&&typeof body.components==='object'?body.components:null;const existingPolicy=(suppliedMetadata as any).license_policy&&typeof (suppliedMetadata as any).license_policy==='object'?(suppliedMetadata as any).license_policy:{};const metadata={...suppliedMetadata,license_policy:{...existingPolicy,max_installations:1,...(components?{components}:{})}};const result=await issueLicense({productId:product.id,customerExternalId,customerOverride,externalReference:body?.external_reference??body?.orderRef??null,expiresAt,actor:`api:${auth.name}`,metadata});
-    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,storage_status:result.status,effective_status:'active',canonical_status:'active',issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
+    const authorityRow=(await db().query('select status,metadata from licenses where id=$1 limit 1',[result.id])).rows[0]||{status:result.status,metadata};
+    const activationStatuses=(await db().query('select status from activations where license_id=$1',[result.id])).rows.map((row:any)=>String(row.status||''));
+    const effectiveStatus=canonicalLicenseStatus({storageStatus:authorityRow.status,metadata:authorityRow.metadata,activationStatuses});
+    const license={id:result.id,license_key:result.key,license_id:result.id,status:effectiveStatus,storage_status:authorityRow.status,effective_status:effectiveStatus,canonical_status:effectiveStatus,issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
     return NextResponse.json({...license,license});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Unable to issue license',code:'LICENSE_ISSUE_FAILED'},{status:500});}
 }
