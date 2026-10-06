@@ -60,6 +60,10 @@ jobs:
         if: steps.profile.outputs.run == 'true'
         run: node --test scripts/license-status-contract.test.mjs
 
+      - name: Test scoped licence query filter
+        if: steps.profile.outputs.run == 'true'
+        run: node --test scripts/license-query-filter.test.mjs
+
       - name: Typecheck
         if: steps.profile.outputs.run == 'true'
         run: npm run typecheck
