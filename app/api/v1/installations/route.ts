@@ -92,6 +92,7 @@ export async function GET(request:Request){
       last_operation:row.last_operation,
       deployment_count:row.deployment_count,
       current_components:row.current_components,
+      panel_domain:row.metadata&&typeof row.metadata==='object'&&row.metadata.panel_domain&&typeof row.metadata.panel_domain==='object'?row.metadata.panel_domain:null,
       ...lock,
       current_base:row.base_release_id?{
         release_id:row.base_release_id,
