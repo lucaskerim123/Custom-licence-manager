@@ -127,7 +127,7 @@ export async function validateLicense(input:{key:string;productSlug:string;compo
 
   const valid=validLicense&&installationValid;
   const effectiveStatus=canonicalLicenseStatus({storageStatus:license.status,metadata:license.metadata,activationStatuses:bindingLocked?['active']:[]});
-  const code=valid?'LICENSE_VALID':!componentAllowed?'COMPONENT_RESTRICTED':!installationValid?'INSTALLATION_NOT_AVAILABLE':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':effectiveStatus==='terminated'?'LICENSE_TERMINATED':effectiveStatus==='restricted'?'LICENSE_RESTRICTED':effectiveStatus==='suspended'?'LICENSE_SUSPENDED':`LICENSE_${effectiveStatus.toUpperCase()}`;
+  const code=valid?'LICENSE_VALID':!componentAllowed?'COMPONENT_NOT_ENTITLED':!installationValid?'INSTALLATION_NOT_AVAILABLE':expired?'LICENSE_EXPIRED':license.product_status!=='active'?'PRODUCT_DISABLED':effectiveStatus==='terminated'?'LICENSE_TERMINATED':effectiveStatus==='restricted'?'LICENSE_RESTRICTED':effectiveStatus==='suspended'?'LICENSE_SUSPENDED':`LICENSE_${effectiveStatus.toUpperCase()}`;
   const components=runtimeComponentStates(String(license.component),entitledComponents,effectiveStatus);
   return{valid,code,status:valid?200:403,expires_at:license.expires_at??null,metadata:license.metadata??{},license_id:license.id,license_status:effectiveStatus,runtime_policy,components,installation:{installation_id:input.installationId||null,status:bindingStatus,locked:bindingLocked}};
 }
