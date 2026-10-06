@@ -12,17 +12,23 @@ const DESTRUCTIVE_SQL=/\b(?:drop\s+table|drop\s+schema|truncate\s+(?:table\s+)?|
 const TRANSACTION_SQL=/\b(?:begin|commit|rollback)\s*;/i;
 
 const CENTRAL_DATABASE_SOURCE_REPO='lucaskerim123/Master-Database-System';
-const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={
-  base:[CENTRAL_DATABASE_SOURCE_REPO],
-  'engine-shared':[CENTRAL_DATABASE_SOURCE_REPO],
-  mcp:[CENTRAL_DATABASE_SOURCE_REPO],
-  apex:[CENTRAL_DATABASE_SOURCE_REPO],
-  studio:[CENTRAL_DATABASE_SOURCE_REPO]
+const LEGACY_DATABASE_SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={
+  base:['lucaskerim123/V1-vercel-base'],
+  'engine-shared':['lucaskerim123/V1-vercel-engine'],
+  mcp:['lucaskerim123/V1-vercel-engine'],
+  apex:['lucaskerim123/V1-vercel-engine'],
+  studio:['lucaskerim123/V1-vercel-engine']
 };
-const ALL_DATABASE_SOURCE_REPOS=[CENTRAL_DATABASE_SOURCE_REPO];
+const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>=Object.fromEntries(
+  CUSTOMER_DATABASE_COMPONENTS.map((key)=>[key,[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS[key]]])
+) as Record<CustomerDatabaseComponent,readonly string[]>;
+const ALL_DATABASE_SOURCE_REPOS=[...new Set(Object.values(SOURCE_REPOS).flat())];
 
 function knownSourceRepoForComponent(value:CustomerDatabaseComponent,repo:unknown){
   return SOURCE_REPOS[value].includes(String(repo||'').trim());
+}
+function legacySourceRepoForComponent(value:CustomerDatabaseComponent,repo:unknown){
+  return LEGACY_DATABASE_SOURCE_REPOS[value].includes(String(repo||'').trim());
 }
 async function activeSourceRepoForComponent(_value:CustomerDatabaseComponent){
   return CENTRAL_DATABASE_SOURCE_REPO;
@@ -58,7 +64,9 @@ export function validateDatabasePackage(input:any){
   if(String(input.databaseTarget||'').trim().toLowerCase()!=='customer')throw new Error('DATABASE_PACKAGE_TARGET_INVALID');
 
   const sourceRepo=String(input.sourceRepo||'').trim();
-  if(!SOURCE_REPOS[selected].includes(sourceRepo))throw new Error('DATABASE_PACKAGE_SOURCE_REPO_INVALID');
+  // New package intake is central-only. Legacy V1 package rows remain readable
+  // solely as an immutable fallback until the first central package is current.
+  if(sourceRepo!==CENTRAL_DATABASE_SOURCE_REPO)throw new Error('DATABASE_PACKAGE_SOURCE_REPO_INVALID');
 
   const sourceCommit=String(input.sourceCommit||'').trim().toLowerCase();
   if(!/^[a-f0-9]{40}$/.test(sourceCommit))throw new Error('DATABASE_PACKAGE_SOURCE_COMMIT_INVALID');
@@ -258,9 +266,17 @@ export async function getDatabasePackageById(id:string){
 export async function getCurrentDatabasePackage(componentValue:string){
   const selected=component(componentValue);
   const sourceRepo=await activeSourceRepoForComponent(selected);
-  return (await db().query(
-    "select * from database_packages where component=$1 and source_repo=$2 and database_target='customer' and status='current' limit 1",
+  const central=(await db().query(
+    "select * from database_packages where component=$1 and source_repo=$2 and database_target='customer' and status='current' order by published_at desc nulls last,created_at desc limit 1",
     [selected,sourceRepo]
+  )).rows[0]||null;
+  if(central)return central;
+
+  // Availability fallback: use only an already-current immutable legacy package.
+  // No new V1 package can enter through validateDatabasePackage().
+  return (await db().query(
+    "select * from database_packages where component=$1 and source_repo = any($2::text[]) and database_target='customer' and status='current' order by published_at desc nulls last,created_at desc limit 1",
+    [selected,[...LEGACY_DATABASE_SOURCE_REPOS[selected]]]
   )).rows[0]||null;
 }
 
@@ -319,7 +335,10 @@ export async function validateReleaseDatabasePackages(row:any){
     if(!stored)return {ok:false,message:'Referenced database package was not found: '+ref.id};
     if(stored.component!==ref.component)return {ok:false,message:'Database package component mismatch for '+ref.id};
     if(!['candidate','current'].includes(String(stored.status||'')))return {ok:false,message:'Database package is not publishable/current: '+ref.id};
-    if(String(stored.source_repo||'')!==CENTRAL_DATABASE_SOURCE_REPO)return {ok:false,message:'Database package is not sourced from Master Database System: '+ref.component};
+    const storedSourceRepo=String(stored.source_repo||'');
+    const centralSource=storedSourceRepo===CENTRAL_DATABASE_SOURCE_REPO;
+    const legacyFallback=legacySourceRepoForComponent(ref.component,storedSourceRepo)&&String(stored.status||'')==='current';
+    if(!centralSource&&!legacyFallback)return {ok:false,message:'Database package source is not an approved central/fallback source: '+ref.component};
     if(!/^[a-f0-9]{40}$/.test(ref.sourceCommit)||String(stored.source_commit||'').toLowerCase()!==ref.sourceCommit)return {ok:false,message:'Database package source commit reference mismatch: '+ref.component};
     if(Number(stored.database_schema_version)!==ref.databaseSchemaVersion)return {ok:false,message:'Database package schema version reference mismatch: '+ref.component};
     if(String(stored.package_sha256||'').toLowerCase()!==ref.sha256||!/^[a-f0-9]{64}$/.test(ref.sha256))return {ok:false,message:'Database package checksum reference mismatch: '+ref.component};
