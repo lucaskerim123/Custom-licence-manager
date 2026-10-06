@@ -2,6 +2,7 @@ import {NextResponse} from 'next/server';
 import {integrationAuthorized} from '../../../../lib/auth';
 import {issueLicense} from '../../../../lib/core/licenses';
 import {db} from '../../../../lib/db';
+import {canonicalComponentStatus,canonicalLicenseStatus} from '../../../../lib/core/license-status';
 
 export async function GET(request:Request){
   const auth=await integrationAuthorized(request,'license.manage');
@@ -18,12 +19,25 @@ export async function GET(request:Request){
   for(const activation of activations){const key=String(activation.license_id);const list=grouped.get(key)||[];list.push(activation);grouped.set(key,list);}
   const settings=(await db().query('select system_enabled,licensing_enabled,maintenance_mode,customer_self_unlock_enabled from system_settings where id=true')).rows[0];
   const customerSelfUnlockEffective=Boolean(settings?.system_enabled)&&Boolean(settings?.licensing_enabled)&&!Boolean(settings?.maintenance_mode)&&Boolean(settings?.customer_self_unlock_enabled);
-  return NextResponse.json({customer_self_unlock_enabled:customerSelfUnlockEffective,licenses:rows.map((row:any)=>({
-    ...row,
-    components:row?.metadata?.license_policy?.components||{},
-    max_installations:1,
-    activations:grouped.get(String(row.id))||[]
-  }))});
+  return NextResponse.json({customer_self_unlock_enabled:customerSelfUnlockEffective,licenses:rows.map((row:any)=>{
+    const licenseActivations=grouped.get(String(row.id))||[];
+    const effectiveStatus=canonicalLicenseStatus({storageStatus:row.status,metadata:row.metadata,activationStatuses:licenseActivations.map((activation:any)=>activation.status)});
+    const entitlements=row?.metadata?.license_policy?.components||{};
+    const component_states=Object.fromEntries(['orbitfs_base','orbitfs_apex','orbitfs_mcp','orbitfs_studio'].map(component=>{
+      const entitled=component==='orbitfs_base'||Boolean(entitlements[component]);
+      return [component,{status:canonicalComponentStatus({licenseStatus:effectiveStatus,entitled}),entitled}];
+    }));
+    return {
+      ...row,
+      storage_status:row.status,
+      effective_status:effectiveStatus,
+      canonical_status:effectiveStatus,
+      components:entitlements,
+      component_states,
+      max_installations:1,
+      activations:licenseActivations
+    };
+  })});
 }
 
 export async function POST(request:Request){
@@ -44,7 +58,7 @@ export async function POST(request:Request){
     const expiresAt=rawExpiry?new Date(String(rawExpiry)):null;
     if(expiresAt&&Number.isNaN(expiresAt.getTime()))return NextResponse.json({error:'Invalid expiry date',code:'INVALID_EXPIRY'},{status:400});
     const suppliedMetadata=body?.metadata&&typeof body.metadata==='object'?body.metadata:{};const components=body?.components&&typeof body.components==='object'?body.components:null;const existingPolicy=(suppliedMetadata as any).license_policy&&typeof (suppliedMetadata as any).license_policy==='object'?(suppliedMetadata as any).license_policy:{};const metadata={...suppliedMetadata,license_policy:{...existingPolicy,max_installations:1,...(components?{components}:{})}};const result=await issueLicense({productId:product.id,customerExternalId,customerOverride,externalReference:body?.external_reference??body?.orderRef??null,expiresAt,actor:`api:${auth.name}`,metadata});
-    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
+    const license={id:result.id,license_key:result.key,license_id:result.id,status:result.status,storage_status:result.status,effective_status:'active',canonical_status:'active',issued_at:result.issued_at,expires_at:result.expires_at,customer_external_id:result.customer_external_id,customer_override:result.customer_override,already_issued:Boolean((result as any).alreadyIssued)};
     return NextResponse.json({...license,license});
   }catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Unable to issue license',code:'LICENSE_ISSUE_FAILED'},{status:500});}
 }
