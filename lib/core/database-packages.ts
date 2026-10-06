@@ -276,6 +276,45 @@ export async function getDatabasePackageById(id:string){
   )).rows[0]||null;
 }
 
+export async function resolveDatabasePackageForRelease(componentValue:string){
+  const selected=component(componentValue);
+  const central=(await db().query(
+    `select * from database_packages
+     where component=$1
+       and source_repo=$2
+       and database_target='customer'
+       and status in ('candidate','current')
+     order by created_at desc
+     limit 1`,
+    [selected,CENTRAL_DATABASE_SOURCE_REPO]
+  )).rows[0]||null;
+  if(central)return {...central,resolution_source:'central'};
+
+  const legacy=(await db().query(
+    `select * from database_packages
+     where component=$1
+       and source_repo = any($2::text[])
+       and database_target='customer'
+       and status='current'
+     order by published_at desc nulls last,created_at desc
+     limit 1`,
+    [selected,[...LEGACY_DATABASE_SOURCE_REPOS[selected]]]
+  )).rows[0]||null;
+  return legacy?{...legacy,resolution_source:'legacy-current-fallback'}:null;
+}
+
+export async function resolveDatabasePackageSetForRelease(componentValues:string[]){
+  const requested=[...new Set((componentValues||[]).map((value)=>component(value)))];
+  if(!requested.length)throw new Error('DATABASE_PACKAGE_COMPONENTS_REQUIRED');
+  const packages=[];
+  for(const selected of requested){
+    const row=await resolveDatabasePackageForRelease(selected);
+    if(!row)throw new Error('DATABASE_PACKAGE_NOT_FOUND:'+selected);
+    packages.push(row);
+  }
+  return packages;
+}
+
 export async function getCurrentDatabasePackage(componentValue:string){
   const selected=component(componentValue);
   const sourceRepo=await activeSourceRepoForComponent(selected);
