@@ -19,9 +19,13 @@ const LEGACY_DATABASE_SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly str
   apex:['lucaskerim123/V1-vercel-engine'],
   studio:['lucaskerim123/V1-vercel-engine']
 };
-const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>=Object.fromEntries(
-  CUSTOMER_DATABASE_COMPONENTS.map((key)=>[key,[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS[key]]])
-) as Record<CustomerDatabaseComponent,readonly string[]>;
+const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={
+  base:[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS.base],
+  'engine-shared':[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS['engine-shared']],
+  mcp:[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS.mcp],
+  apex:[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS.apex],
+  studio:[CENTRAL_DATABASE_SOURCE_REPO,...LEGACY_DATABASE_SOURCE_REPOS.studio]
+};
 const ALL_DATABASE_SOURCE_REPOS=[...new Set(Object.values(SOURCE_REPOS).flat())];
 
 function knownSourceRepoForComponent(value:CustomerDatabaseComponent,repo:unknown){
