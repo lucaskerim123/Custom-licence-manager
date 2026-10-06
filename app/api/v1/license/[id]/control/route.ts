@@ -16,7 +16,7 @@ export async function POST(
   const action = String(body?.action || '').trim().toLowerCase();
   const installationId = String(body?.installation_id || body?.installationId || '').trim();
 
-  if (!['rotate', 'unlock', 'customer-unlock', 'suspend', 'terminate', 'revoke', 'activate', 'set-component', 'set-components', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
+  if (!['rotate', 'unlock', 'customer-unlock', 'restrict', 'suspend', 'terminate', 'revoke', 'activate', 'set-component', 'set-components', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
     return NextResponse.json({ error: 'Unsupported license control action' }, { status: 400 });
   }
 
@@ -113,7 +113,7 @@ export async function POST(
 
     if (['unlock', 'customer-unlock', 'lock-installation', 'unlock-installation', 'reactivate-installation', 'terminate-installation'].includes(action)) {
       if (['lock-installation','reactivate-installation','terminate-installation'].includes(action)) {
-        return NextResponse.json({ error: 'Installation blocking was merged into licence suspension. Use suspend for enforcement or unlock-installation to release the binding.', code: 'LEGACY_INSTALLATION_CONTROL_REMOVED' }, { status: 409 });
+        return NextResponse.json({ error: 'Locked means bound to an installation. Use restrict for admin enforcement or unlock-installation to release the binding.', code: 'LEGACY_INSTALLATION_CONTROL_REMOVED' }, { status: 409 });
       }
       if (!installationId) return NextResponse.json({ error: 'installation_id is required for installation control' }, { status: 400 });
       if (current.status !== 'active') return NextResponse.json({ error: 'Unlock is unavailable unless the licence is active', code: 'LICENSE_CONTROLS_LOCKED' }, { status: 409 });
@@ -129,9 +129,15 @@ export async function POST(
       return NextResponse.json({ ok:true, action, installation:result, message:'Licence unlocked. It is active, unbound and ready to activate on one installation.' });
     }
 
+    if (action === 'restrict') {
+      const result = await setLicenseStatus(id, 'suspended', null, 'external-integration', {enforcementScope:'license',reason:String(body?.reason||'').trim()||null});
+      return NextResponse.json({ ok:true, action, license:result, message:'Licence restricted. Its installation binding is preserved while runtime and controlled actions are denied.' });
+    }
     if (action === 'suspend') {
-      const result = await setLicenseStatus(id, 'suspended', null, 'external-integration');
-      return NextResponse.json({ ok:true, action, license:result, message:'Licence suspended. Runtime access and licence controls are locked.' });
+      const scope=String(body?.scope||body?.enforcement_scope||'').trim().toLowerCase();
+      if(scope!=='account')return NextResponse.json({error:'Suspend is reserved for global account enforcement. Use restrict for a single licence.',code:'ACCOUNT_SUSPENSION_SCOPE_REQUIRED'},{status:400});
+      const result = await setLicenseStatus(id, 'suspended', null, 'external-integration', {enforcementScope:'account',reason:String(body?.reason||'').trim()||null});
+      return NextResponse.json({ ok:true, action, license:result, message:'Licence suspended by global account enforcement. Existing installation binding is preserved.' });
     }
     if (action === 'terminate' || action === 'revoke') {
       const result = await terminateLicense(id, null, 'external-integration');
