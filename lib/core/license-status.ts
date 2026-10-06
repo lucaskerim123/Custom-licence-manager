@@ -22,9 +22,9 @@ export function canonicalLicenseStatus(input:CanonicalLicenseInput):CanonicalLic
   return locked?'locked':'active';
 }
 
-export function canonicalComponentStatus(input:{licenseStatus:CanonicalLicenseStatus;entitled:boolean}):CanonicalLicenseStatus{
+export function canonicalComponentStatus(input:{licenseStatus:CanonicalLicenseStatus;entitled:boolean}):CanonicalLicenseStatus|'not_entitled'{
+  if(!input.entitled)return 'not_entitled';
   if(input.licenseStatus==='terminated'||input.licenseStatus==='expired'||input.licenseStatus==='pending'||input.licenseStatus==='suspended'||input.licenseStatus==='restricted')return input.licenseStatus;
-  if(!input.entitled)return 'restricted';
   return input.licenseStatus;
 }
 
