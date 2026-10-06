@@ -283,7 +283,16 @@ async function scanPackage(row:any,bytes:Buffer){
           const sha=String(migration?.sha256||'').trim().toLowerCase();
           return String(migration?.component||'').toLowerCase()==='base'
             &&/^\d{14}$/.test(id)
-            &&new RegExp('^supabase/migrations/'+id+'_[A-Za-z0-9._-]+\\.sql
+            &&new RegExp('^supabase/migrations/'+id+'_[A-Za-z0-9._-]+\\.sql$').test(file)
+            &&migrations.some((candidate:any)=>
+              String(candidate?.id||'')===id
+              &&String(candidate?.file||'').replaceAll('\\','/')===file
+              &&String(candidate?.component||'').toLowerCase()==='base'
+              &&String(candidate?.sha256||'').toLowerCase()===sha
+            );
+        })
+      );
+      const panelIdentityOk=!baseTarget
         ?panel===null||panel===undefined
         :Boolean(panel&&panel.format==='orbitfs-base-update-patch-v1'&&Number(panel.schemaVersion)===1&&String(panel.version||'')===String(pkg.version||'')&&String(panel.sourceCommit||'')===String(pkg.sourceCommit||'')&&panelBaseSourceOk&&panelDatabaseOk&&(panelFiles.length>0||panelDeletePaths.length>0||panelDatabaseMigrations.length>0)&&panelDeletePaths.every(panelPathSafe));
       checks.push({key:'package_panel_payload',ok:panelIdentityOk,message:baseTarget?(panelIdentityOk?'Base target contains a valid targeted Base patch with exact Base source, published-baseline identity and bridged forward migrations.':'Base-targeting Update requires a valid orbitfs-base-update-patch-v1 payload with exact Base source, baseline identity and matching Base migration bridge.'):(panelIdentityOk?'No Base patch payload is present.':'Update has a Base patch payload without declaring the Base target.')});
