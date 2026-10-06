@@ -56,6 +56,10 @@ jobs:
         if: steps.profile.outputs.run == 'true'
         run: node scripts/release-manifest.test.mjs
 
+      - name: Test canonical licence status contract
+        if: steps.profile.outputs.run == 'true'
+        run: node --test scripts/license-status-contract.test.mjs
+
       - name: Typecheck
         if: steps.profile.outputs.run == 'true'
         run: npm run typecheck
