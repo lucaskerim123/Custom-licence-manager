@@ -52,7 +52,7 @@ test('pending and expired remain canonical terminal/pre-activation states',()=>{
 
 test('component access follows the root licence while remaining independently restrictable',()=>{
   assert.equal(canonicalComponentStatus({licenseStatus:'locked',entitled:true}), 'locked');
-  assert.equal(canonicalComponentStatus({licenseStatus:'locked',entitled:false}), 'restricted');
+  assert.equal(canonicalComponentStatus({licenseStatus:'locked',entitled:false}), 'not_entitled');
   assert.equal(canonicalComponentStatus({licenseStatus:'suspended',entitled:true}), 'suspended');
   assert.equal(canonicalComponentStatus({licenseStatus:'terminated',entitled:true}), 'terminated');
 });
