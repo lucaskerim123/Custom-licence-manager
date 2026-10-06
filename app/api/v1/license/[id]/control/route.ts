@@ -3,6 +3,13 @@ import { integrationAuthorized } from '../../../../../../lib/auth';
 import { db } from '../../../../../../lib/db';
 import { reactivateTerminatedLicense, rotateLicense, setInstallationStatus, setLicenseStatus, terminateLicense } from '../../../../../../lib/core/licenses';
 import { sendPulse } from '../../../../../../lib/core/settings';
+import { canonicalLicenseStatus } from '../../../../../../lib/core/license-status';
+
+async function canonicalLicenseRecord(row:any){
+  const activationStatuses=(await db().query('select status from activations where license_id=$1',[row.id])).rows.map((activation:any)=>String(activation.status||''));
+  const status=canonicalLicenseStatus({storageStatus:row.status,metadata:row.metadata,activationStatuses});
+  return {...row,storage_status:row.status,status,effective_status:status,canonical_status:status};
+}
 
 export async function POST(
   request: Request,
@@ -58,7 +65,7 @@ export async function POST(
       }
       const expired = Boolean(current.expires_at && new Date(current.expires_at).getTime() <= Date.now());
       if (body.enabled && (current.status !== 'active' || expired)) {
-        return NextResponse.json({ error: 'Add-ons can only be activated while the Base licence is active', code: expired ? 'LICENSE_EXPIRED' : 'LICENSE_NOT_ACTIVE' }, { status: 409 });
+        return NextResponse.json({ error: 'Add-ons can only be activated while the Base licence is Active or Locked', code: expired ? 'LICENSE_EXPIRED' : 'LICENSE_NOT_ACTIVE' }, { status: 409 });
       }
       const existingPolicy = current.metadata && typeof current.metadata === 'object' && current.metadata.license_policy && typeof current.metadata.license_policy === 'object' ? current.metadata.license_policy : {};
       const existingComponents = existingPolicy.components && typeof existingPolicy.components === 'object' ? existingPolicy.components : {};
@@ -70,7 +77,7 @@ export async function POST(
       };
       components[component] = body.enabled;
       const metadata = { ...(current.metadata || {}), license_policy: { ...existingPolicy, components } };
-      const updated = (await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0];
+      const updated = await canonicalLicenseRecord((await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0]);
       await db().query(
         `insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'license.component','license',$2,$3)`,
         [`api:${auth.name}`, id, JSON.stringify({ component, enabled: body.enabled, components, binding_preserved: true })],
@@ -102,7 +109,7 @@ export async function POST(
         components[key] = Boolean(supplied[key]);
       }
       const metadata = { ...(current.metadata || {}), license_policy: { ...existingPolicy, components } };
-      const updated = (await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0];
+      const updated = await canonicalLicenseRecord((await db().query('update licenses set metadata=$2 where id=$1 returning id,status,metadata', [id, JSON.stringify(metadata)])).rows[0]);
       await db().query(
         `insert into audit_events(actor,action,resource_type,resource_id,details) values($1,'license.components','license',$2,$3)`,
         [`api:${auth.name}`, id, JSON.stringify({ components })],
@@ -149,7 +156,7 @@ export async function POST(
         return NextResponse.json({ ok:true, action, license:result, key:result.key, message:'Terminated licence manually reactivated with a new one-time key. Licence is active and unbound.' });
       }
       const result = await setLicenseStatus(id, 'active', null, 'external-integration');
-      return NextResponse.json({ ok:true, action, license:result, message:'Licence active. Existing binding state is preserved.' });
+      return NextResponse.json({ ok:true, action, license:result, message:result.status==='locked'?'Licence restored and remains Locked to its existing installation.':'Licence Active, unbound and ready to install.' });
     }
   } catch (error) {
     return NextResponse.json(
