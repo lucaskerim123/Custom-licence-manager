@@ -3,6 +3,7 @@ import {integrationAuthorized} from '../../../../lib/auth';
 import {issueLicense} from '../../../../lib/core/licenses';
 import {db} from '../../../../lib/db';
 import {canonicalComponentStatus,canonicalLicenseStatus} from '../../../../lib/core/license-status';
+import {buildLicenseScopeFilter} from '../../../../lib/core/license-query-filter.mjs';
 
 export async function GET(request:Request){
   const auth=await integrationAuthorized(request,'license.manage');
@@ -10,11 +11,7 @@ export async function GET(request:Request){
   const url=new URL(request.url);
   const customerExternalId=String(url.searchParams.get('customer_external_id')||'').trim();
   const requestedLicenseIds=[...new Set(String(url.searchParams.get('license_ids')||'').split(',').map(value=>value.trim()).filter(value=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)))].slice(0,100);
-  const params:any[]=[];
-  const clauses:string[]=[];
-  if(customerExternalId){params.push(customerExternalId);clauses.push(`l.customer_external_id=${params.length}`);}
-  if(requestedLicenseIds.length){params.push(requestedLicenseIds);clauses.push(`l.id=any(${params.length}::uuid[])`);}
-  const where=clauses.length?` where (${clauses.join(' or ')})`:'';
+  const {params,where}=buildLicenseScopeFilter(customerExternalId,requestedLicenseIds);
   const rows=(await db().query("select l.id,l.license_key_last4,l.product_id,l.customer_external_id,l.external_reference,l.status,l.issued_at,l.expires_at,l.metadata,l.customer_override,p.slug product_code,p.name product from licenses l join products p on p.id=l.product_id"+where+" order by l.issued_at desc",params)).rows;
   const ids=rows.map((row:any)=>String(row.id)).filter(Boolean);
   const activations=ids.length?(await db().query("select id,license_id,installation_id,status,product_version,first_seen_at,last_seen_at,last_provider,last_region,last_platform,last_architecture,last_client,last_client_version,last_deployment_id,last_deployment_url,last_deployment_status,last_operation,deployment_count,current_components from activations where license_id=any($1::uuid[]) order by last_seen_at desc nulls last",[ids])).rows:[];
