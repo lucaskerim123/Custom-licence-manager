@@ -261,9 +261,18 @@ export async function listDatabasePackages(componentFilter?:string){
 
 export async function getDatabasePackageById(id:string){
   if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return null;
+  // Exact release-bound reads must also resolve the already-current immutable
+  // legacy fallback packages. New package intake is still central-only.
   return (await db().query(
-    "select * from database_packages where id=$1 and source_repo=$2 and database_target='customer' limit 1",
-    [id,CENTRAL_DATABASE_SOURCE_REPO]
+    `select * from database_packages
+     where id=$1
+       and database_target='customer'
+       and (
+         source_repo=$2
+         or (source_repo = any($3::text[]) and status='current')
+       )
+     limit 1`,
+    [id,CENTRAL_DATABASE_SOURCE_REPO,[...ALL_DATABASE_SOURCE_REPOS].filter((repo)=>repo!==CENTRAL_DATABASE_SOURCE_REPO)]
   )).rows[0]||null;
 }
 
