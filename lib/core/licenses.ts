@@ -9,7 +9,7 @@ export type InstallationStatus = 'active' | 'released';
 const ORBITFS_COMPONENT_IDS=['orbitfs_base','orbitfs_mcp','orbitfs_apex','orbitfs_studio'] as const;
 
 function runtimeComponentStates(licenseComponent:string,entitlements:Record<string,unknown>,licenseStatus:CanonicalLicenseStatus){
-  const out:Record<string,{state:CanonicalLicenseStatus;allowed:boolean;lockedToThisInstallation:boolean;reason:string|null}>={};
+  const out:Record<string,{state:CanonicalLicenseStatus|'not_entitled';allowed:boolean;lockedToThisInstallation:boolean;reason:string|null}>={};
   for(const id of ORBITFS_COMPONENT_IDS){
     const entitled=id===licenseComponent||(licenseComponent==='orbitfs_base'&&(id==='orbitfs_base'||Boolean(entitlements[id])));
     const state=canonicalComponentStatus({licenseStatus,entitled});
