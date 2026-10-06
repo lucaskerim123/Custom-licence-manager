@@ -257,10 +257,20 @@ async function scanPackage(row:any,bytes:Buffer){
       const panelDeletePaths=Array.isArray(panel?.deletePaths)?panel.deletePaths.map((value:any)=>String(value||'').replaceAll('\\','/')):[];
       const panelFiles=Array.isArray(panel?.files)?panel.files:[];
       const panelPathSafe=(value:string)=>Boolean(value)&&!value.startsWith('/')&&!value.includes('..')&&!/(^|\/)(?:\.git|\.vercel|node_modules)(?:\/|$)/i.test(value)&&!/(^|\/)\.env(?:$|\.)/i.test(value);
+      const panelBaseSource=panel?.baseSource&&typeof panel.baseSource==='object'&&!Array.isArray(panel.baseSource)?panel.baseSource:null;
+      const panelBaseSourceOk=Boolean(
+        panelBaseSource
+        &&String(panelBaseSource.repository||'').trim()
+        &&String(panelBaseSource.ref||'').trim()
+        &&/^[a-f0-9]{40}$/i.test(String(panelBaseSource.commit||'').trim())
+        &&String(panelBaseSource.baselineReleaseId||'').trim()
+        &&validReleaseVersion(panelBaseSource.baselineVersion)
+        &&/^[a-f0-9]{40}$/i.test(String(panelBaseSource.baselineSourceCommit||'').trim())
+      );
       const panelIdentityOk=!baseTarget
         ?panel===null||panel===undefined
-        :Boolean(panel&&panel.format==='orbitfs-base-update-patch-v1'&&Number(panel.schemaVersion)===1&&String(panel.version||'')===String(pkg.version||'')&&String(panel.sourceCommit||'')===String(pkg.sourceCommit||'')&&(panelFiles.length>0||panelDeletePaths.length>0)&&panelDeletePaths.every(panelPathSafe));
-      checks.push({key:'package_panel_payload',ok:panelIdentityOk,message:baseTarget?(panelIdentityOk?'Base target contains a valid targeted Base patch payload.':'Base-targeting Update requires a valid orbitfs-base-update-patch-v1 payload.'):(panelIdentityOk?'No Base patch payload is present.':'Update has a Base patch payload without declaring the Base target.')});
+        :Boolean(panel&&panel.format==='orbitfs-base-update-patch-v1'&&Number(panel.schemaVersion)===1&&String(panel.version||'')===String(pkg.version||'')&&String(panel.sourceCommit||'')===String(pkg.sourceCommit||'')&&panelBaseSourceOk&&(panelFiles.length>0||panelDeletePaths.length>0)&&panelDeletePaths.every(panelPathSafe));
+      checks.push({key:'package_panel_payload',ok:panelIdentityOk,message:baseTarget?(panelIdentityOk?'Base target contains a valid targeted Base patch with exact Base source and published-baseline identity.':'Base-targeting Update requires a valid orbitfs-base-update-patch-v1 payload with exact Base source and published-baseline identity.'):(panelIdentityOk?'No Base patch payload is present.':'Update has a Base patch payload without declaring the Base target.')});
 
       const rawEngineComponents=engine?canonicalComponents(engine.components,'update'):[];
       const engineHasBase=rawEngineComponents.includes('base');
