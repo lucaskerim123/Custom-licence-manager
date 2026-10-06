@@ -11,47 +11,21 @@ const FORBIDDEN_INTERNAL_SQL=/\b(?:billing_[a-z0-9_]*|license_manager_[a-z0-9_]*
 const DESTRUCTIVE_SQL=/\b(?:drop\s+table|drop\s+schema|truncate\s+(?:table\s+)?|alter\s+table[\s\S]{0,300}?drop\s+column)\b/i;
 const TRANSACTION_SQL=/\b(?:begin|commit|rollback)\s*;/i;
 
-type DatabaseSourceProfile='primary'|'fallback';
-const DATABASE_SOURCE_REPOS:Record<DatabaseSourceProfile,Record<CustomerDatabaseComponent,string>>={
-  primary:{
-    base:'lucaskerim123/V1-vercel-base',
-    'engine-shared':'lucaskerim123/V1-vercel-engine',
-    mcp:'lucaskerim123/V1-vercel-engine',
-    apex:'lucaskerim123/V1-vercel-engine',
-    studio:'lucaskerim123/V1-vercel-engine'
-  },
-  fallback:{
-    base:'lucaskerim123/V1-vercel-base',
-    'engine-shared':'lucaskerim123/V1-vercel-engine',
-    mcp:'lucaskerim123/V1-vercel-engine',
-    apex:'lucaskerim123/V1-vercel-engine',
-    studio:'lucaskerim123/V1-vercel-engine'
-  }
-};
+const CENTRAL_DATABASE_SOURCE_REPO='lucaskerim123/Master-Database-System';
 const SOURCE_REPOS:Record<CustomerDatabaseComponent,readonly string[]>={
-  base:[DATABASE_SOURCE_REPOS.primary.base,DATABASE_SOURCE_REPOS.fallback.base],
-  'engine-shared':[DATABASE_SOURCE_REPOS.primary['engine-shared'],DATABASE_SOURCE_REPOS.fallback['engine-shared']],
-  mcp:[DATABASE_SOURCE_REPOS.primary.mcp,DATABASE_SOURCE_REPOS.fallback.mcp],
-  apex:[DATABASE_SOURCE_REPOS.primary.apex,DATABASE_SOURCE_REPOS.fallback.apex],
-  studio:[DATABASE_SOURCE_REPOS.primary.studio,DATABASE_SOURCE_REPOS.fallback.studio]
+  base:[CENTRAL_DATABASE_SOURCE_REPO],
+  'engine-shared':[CENTRAL_DATABASE_SOURCE_REPO],
+  mcp:[CENTRAL_DATABASE_SOURCE_REPO],
+  apex:[CENTRAL_DATABASE_SOURCE_REPO],
+  studio:[CENTRAL_DATABASE_SOURCE_REPO]
 };
-const ALL_DATABASE_SOURCE_REPOS=[...new Set(Object.values(SOURCE_REPOS).flat())];
+const ALL_DATABASE_SOURCE_REPOS=[CENTRAL_DATABASE_SOURCE_REPO];
 
-function databaseSourceProfileForRepo(value:unknown):DatabaseSourceProfile|null{
-  const repo=String(value||'').trim();
-  if(repo.startsWith('lucaskerim123/'))return 'primary';
-  if(repo.startsWith('remipetrovich-design/'))return 'fallback';
-  return null;
-}
 function knownSourceRepoForComponent(value:CustomerDatabaseComponent,repo:unknown){
   return SOURCE_REPOS[value].includes(String(repo||'').trim());
 }
-async function activeDatabaseSourceProfile():Promise<DatabaseSourceProfile>{
-  const row=(await db().query('select github_profile from system_settings where id=true')).rows[0];
-  return String(row?.github_profile||'fallback').toLowerCase()==='primary'?'primary':'fallback';
-}
-async function activeSourceRepoForComponent(value:CustomerDatabaseComponent){
-  return DATABASE_SOURCE_REPOS[await activeDatabaseSourceProfile()][value];
+async function activeSourceRepoForComponent(_value:CustomerDatabaseComponent){
+  return CENTRAL_DATABASE_SOURCE_REPO;
 }
 
 const MIGRATION_PATHS:Record<CustomerDatabaseComponent,RegExp>={
@@ -92,10 +66,11 @@ export function validateDatabasePackage(input:any){
   const databaseSchemaVersion=Number(input.databaseSchemaVersion);
   if(!Number.isInteger(databaseSchemaVersion)||databaseSchemaVersion<1)throw new Error('DATABASE_PACKAGE_SCHEMA_VERSION_INVALID');
 
-  const minimumBaseSchemaVersion=input.minimumBaseSchemaVersion==null?null:Number(input.minimumBaseSchemaVersion);
-  if(minimumBaseSchemaVersion!==null&&(!Number.isInteger(minimumBaseSchemaVersion)||minimumBaseSchemaVersion<1))throw new Error('DATABASE_PACKAGE_MINIMUM_BASE_SCHEMA_INVALID');
-
-  const minimumBaseVersion=input.minimumBaseVersion==null?null:String(input.minimumBaseVersion).trim()||null;
+  // Database packages are independent of application version gates.
+  // License Manager authorizes the release; the database package only declares
+  // the immutable schema/migration material to apply.
+  const minimumBaseSchemaVersion=null;
+  const minimumBaseVersion=null;
   const migrations=Array.isArray(input.migrations)?input.migrations:[];
   const migrationCount=Number(input.migrationCount);
   if(!Number.isInteger(migrationCount)||migrationCount<0||migrationCount!==migrations.length)throw new Error('DATABASE_PACKAGE_MIGRATION_COUNT_INVALID');
@@ -272,6 +247,14 @@ export async function listDatabasePackages(componentFilter?:string){
   )).rows;
 }
 
+export async function getDatabasePackageById(id:string){
+  if(!/^[0-9a-f-]{36}$/i.test(String(id||'')))return null;
+  return (await db().query(
+    "select * from database_packages where id=$1 and source_repo=$2 and database_target='customer' limit 1",
+    [id,CENTRAL_DATABASE_SOURCE_REPO]
+  )).rows[0]||null;
+}
+
 export async function getCurrentDatabasePackage(componentValue:string){
   const selected=component(componentValue);
   const sourceRepo=await activeSourceRepoForComponent(selected);
@@ -331,17 +314,15 @@ export async function validateReleaseDatabasePackages(row:any){
   )).rows;
   if(rows.length!==refs.length)return {ok:false,message:'One or more referenced database packages do not exist.'};
   const byId=new Map(rows.map((item:any)=>[String(item.id),item]));
-  const releaseCommit=String(row?.source_sha||'').trim().toLowerCase();
   for(const ref of refs){
     const stored:any=byId.get(ref.id);
     if(!stored)return {ok:false,message:'Referenced database package was not found: '+ref.id};
     if(stored.component!==ref.component)return {ok:false,message:'Database package component mismatch for '+ref.id};
     if(!['candidate','current'].includes(String(stored.status||'')))return {ok:false,message:'Database package is not publishable/current: '+ref.id};
-    if(String(stored.source_commit||'').toLowerCase()!==releaseCommit||ref.sourceCommit!==releaseCommit)return {ok:false,message:'Database package source commit does not match the release: '+ref.component};
+    if(String(stored.source_repo||'')!==CENTRAL_DATABASE_SOURCE_REPO)return {ok:false,message:'Database package is not sourced from Master Database System: '+ref.component};
+    if(!/^[a-f0-9]{40}$/.test(ref.sourceCommit)||String(stored.source_commit||'').toLowerCase()!==ref.sourceCommit)return {ok:false,message:'Database package source commit reference mismatch: '+ref.component};
     if(Number(stored.database_schema_version)!==ref.databaseSchemaVersion)return {ok:false,message:'Database package schema version reference mismatch: '+ref.component};
     if(String(stored.package_sha256||'').toLowerCase()!==ref.sha256||!/^[a-f0-9]{64}$/.test(ref.sha256))return {ok:false,message:'Database package checksum reference mismatch: '+ref.component};
-    const releaseSourceRepo=String(row?.source_repo||'').trim();
-    if(String(stored.source_repo||'')!==releaseSourceRepo)return {ok:false,message:'Database package source repository does not match the release source repository: '+ref.component};
   }
   return {ok:true,message:`Database package set is complete and source-locked: ${required.join(', ')}.`,packages:refs};
 }
