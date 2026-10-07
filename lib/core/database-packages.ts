@@ -351,7 +351,7 @@ type ReleaseDatabasePackageReference={
 function releaseDatabaseComponents(row:any):CustomerDatabaseComponent[]{
   if(String(row?.release_type||'')==='base')return ['base'];
   const components=Array.isArray(row?.manifest?.components)?row.manifest.components:[];
-  const selected=[...new Set(components.map((value:any)=>String(value||'').trim().toLowerCase()).filter((value:string)=>['base','mcp','apex','studio'].includes(value)))];
+  const selected:string[]=[...new Set<string>(components.map((value:any)=>String(value||'').trim().toLowerCase()).filter((value:string)=>['base','mcp','apex','studio'].includes(value)))];
   const required:CustomerDatabaseComponent[]=[];
   if(selected.includes('base'))required.push('base');
   const engineComponents=selected.filter((value:string)=>['mcp','apex','studio'].includes(value)) as CustomerDatabaseComponent[];
