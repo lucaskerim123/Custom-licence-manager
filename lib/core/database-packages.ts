@@ -343,8 +343,12 @@ type ReleaseDatabasePackageReference={
 function releaseDatabaseComponents(row:any):CustomerDatabaseComponent[]{
   if(String(row?.release_type||'')==='base')return ['base'];
   const components=Array.isArray(row?.manifest?.components)?row.manifest.components:[];
-  const selected=[...new Set(components.map((value:any)=>String(value||'').trim().toLowerCase()).filter((value:string)=>['mcp','apex','studio'].includes(value)))];
-  return ['engine-shared',...selected] as CustomerDatabaseComponent[];
+  const selected=[...new Set(components.map((value:any)=>String(value||'').trim().toLowerCase()).filter((value:string)=>['base','mcp','apex','studio'].includes(value)))];
+  const required:CustomerDatabaseComponent[]=[];
+  if(selected.includes('base'))required.push('base');
+  const engineComponents=selected.filter((value:string)=>['mcp','apex','studio'].includes(value)) as CustomerDatabaseComponent[];
+  if(engineComponents.length)required.push('engine-shared',...engineComponents);
+  return required;
 }
 
 function releaseDatabaseReferences(row:any):ReleaseDatabasePackageReference[]{
@@ -374,6 +378,15 @@ export async function validateReleaseDatabasePackages(row:any){
   const ids=refs.map((ref)=>ref.id);
   if(ids.some((id)=>!/^[0-9a-f-]{36}$/i.test(id))||new Set(ids).size!==ids.length){
     return {ok:false,message:'Database package references contain an invalid or duplicate id.'};
+  }
+
+  const authoritative=await resolveDatabasePackageSetForRelease(required);
+  const authoritativeByComponent=new Map(authoritative.map((item:any)=>[String(item.component),String(item.id)]));
+  for(const ref of refs){
+    const selectedId=authoritativeByComponent.get(ref.component);
+    if(!selectedId||selectedId!==ref.id){
+      return {ok:false,message:'DATABASE_PACKAGE_SELECTION_STALE:'+ref.component};
+    }
   }
   const rows=(await db().query(
     `select id,component,source_repo,source_commit,database_schema_version,package_sha256,status
