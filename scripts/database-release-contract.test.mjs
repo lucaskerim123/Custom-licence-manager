@@ -15,5 +15,10 @@ assert(
   source.includes("DATABASE_PACKAGE_SELECTION_STALE"),
   "Database release contract failed: release validation must reject package refs that are not the License Manager resolver selection."
 );
+assert(
+  source.includes("DATABASE_PACKAGE_REAL_VALIDATION_REQUIRED") &&
+  source.includes("orbitfs-real-supabase-validation-v1"),
+  "Database release contract failed: central packages must carry a successful real-Supabase validation attestation."
+);
 
 console.log("Database release package contract checks passed.");
