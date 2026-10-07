@@ -39,8 +39,8 @@ const RELEASE_SYSTEMS:Record<ReleaseSourceProfile,{
   update:{repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE',artifactRepos:['lucaskerim123/V1-vercel-engine']},
  },
  fallback:{
-  base:{repo:'lucaskerim123/V1-vercel-base',ref:'base-release',artifactRepos:['lucaskerim123/V1-vercel-base','lucaskerim123/Dev-panel']},
-  update:{repo:'lucaskerim123/V1-vercel-engine',ref:'UPDATE_RELEASE',artifactRepos:['lucaskerim123/V1-vercel-engine']},
+  base:{repo:'remipetrovich-design/OrbitFS-Base-System',ref:'base-release',artifactRepos:['remipetrovich-design/OrbitFS-Base-System','remipetrovich-design/OrbitFS-Control-Centre']},
+  update:{repo:'remipetrovich-design/OrbitFS_Engine',ref:'UPDATE_RELEASE',artifactRepos:['remipetrovich-design/OrbitFS_Engine']},
  },
 };
 const ALL_BASE_SOURCE_REPOS=[RELEASE_SYSTEMS.primary.base.repo,RELEASE_SYSTEMS.fallback.base.repo] as const;
@@ -633,8 +633,17 @@ async function checkWorkflow(row: any) {
     return { key: 'ci', ok: false, message: error instanceof Error ? error.message : 'Release CI could not be verified.' };
   }
 }
-export async function listReleases(includeArchived=false){const archive=includeArchived?'':'and r.archived_at is null';return(await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where r.source_repo = any($1::text[]) ${archive} order by r.created_at desc`,[[...ALL_SOURCE_REPOS]])).rows.map(withAuthoritativeReleaseRuntimeAccess);}
-export async function getLatestRelease(productSlug:string,channel='stable',releaseType:'base'|'update'='update'){const repos=releaseSourceRepos(releaseType);const result=await db().query(`select r.id,r.version,r.channel,r.release_type,r.artifact_url,r.checksum,r.source_repo,r.source_ref,r.source_sha,r.artifact_name,r.artifact_repo,r.artifact_run_id,r.vercel_ready,r.supabase_ready,r.deployment_status,r.published_at,r.manifest,p.slug product from releases r join products p on p.id=r.product_id where p.slug=$1 and p.status='active' and r.channel=$2 and r.release_type=$3 and r.source_repo=any($4::text[]) and r.status='published' and r.review_status='approved' and r.archived_at is null order by r.published_at desc nulls last,r.created_at desc limit 1`,[productSlug,channel,releaseType,repos]);return withAuthoritativeReleaseRuntimeAccess(result.rows[0]??null);}
+export async function listReleases(includeArchived=false){
+ const archive=includeArchived?'':'and r.archived_at is null';
+ const profile=await activeReleaseProfile();
+ const repos=[RELEASE_SYSTEMS[profile].base.repo,RELEASE_SYSTEMS[profile].update.repo];
+ return (await db().query(`select r.*,p.slug product,p.name product_name from releases r join products p on p.id=r.product_id where r.source_repo = any($1::text[]) ${archive} order by r.created_at desc`,[repos])).rows.map(withAuthoritativeReleaseRuntimeAccess);
+}
+export async function getLatestRelease(productSlug:string,channel='stable',releaseType:'base'|'update'='update'){
+ const source=await activeReleaseSource(releaseType);
+ const result=await db().query(`select r.id,r.version,r.channel,r.release_type,r.artifact_url,r.checksum,r.source_repo,r.source_ref,r.source_sha,r.artifact_name,r.artifact_repo,r.artifact_run_id,r.vercel_ready,r.supabase_ready,r.deployment_status,r.published_at,r.manifest,p.slug product from releases r join products p on p.id=r.product_id where p.slug=$1 and p.status='active' and r.channel=$2 and r.release_type=$3 and r.source_repo=$4 and r.source_ref=$5 and r.status='published' and r.review_status='approved' and r.archived_at is null order by r.published_at desc nulls last,r.created_at desc limit 1`,[productSlug,channel,releaseType,source.repo,source.ref]);
+ return withAuthoritativeReleaseRuntimeAccess(result.rows[0]??null);
+}
 export async function createRelease(input:{productId:string;channel:string;version:string;releaseType:'base'|'update';sourceRepo?:string|null;sourceRef?:string|null;artifactUrl?:string|null;checksum?:string|null;notes?:string|null;publish?:boolean;actorUserId?:string|null;actor?:string;reviewStatus?:'pending'|'approved'|'rejected';deploymentStatus?:'not_started'|'queued'|'deploying'|'deployed'|'failed';sourceSha?:string|null;artifactName?:string|null;artifactRepo?:string|null;artifactRunId?:number|null;vercelReady?:boolean;supabaseReady?:boolean;customerPublicationRepo?:string|null;manifest?:any;revision?:number;supersedesReleaseId?:string|null}){
  const pool=db();
  const expectedSource=await activeReleaseSource(input.releaseType);
