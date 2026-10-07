@@ -75,6 +75,12 @@ export function validateDatabasePackage(input:any){
   const sourceCommit=String(input.sourceCommit||'').trim().toLowerCase();
   if(!/^[a-f0-9]{40}$/.test(sourceCommit))throw new Error('DATABASE_PACKAGE_SOURCE_COMMIT_INVALID');
 
+  const validation=input?.validation;
+  const expectedValidationProject=selected==='base'?'nktlwumvncdchdbfpwyt':'jbbiufdfhbyieanuaujn';
+  if(validation?.format!=='orbitfs-real-supabase-validation-v1'||validation?.status!=='passed'||validation?.provider!=='supabase'||String(validation?.projectRef||'')!==expectedValidationProject||String(validation?.sourceCommit||'').toLowerCase()!==sourceCommit){
+    throw new Error('DATABASE_PACKAGE_REAL_VALIDATION_REQUIRED');
+  }
+
   const databaseSchemaVersion=Number(input.databaseSchemaVersion);
   if(!Number.isInteger(databaseSchemaVersion)||databaseSchemaVersion<1)throw new Error('DATABASE_PACKAGE_SCHEMA_VERSION_INVALID');
 
@@ -284,6 +290,8 @@ export async function resolveDatabasePackageForRelease(componentValue:string){
        and source_repo=$2
        and database_target='customer'
        and status in ('candidate','current')
+       and package->'validation'->>'format'='orbitfs-real-supabase-validation-v1'
+       and package->'validation'->>'status'='passed'
      order by created_at desc
      limit 1`,
     [selected,CENTRAL_DATABASE_SOURCE_REPO]
@@ -319,7 +327,7 @@ export async function getCurrentDatabasePackage(componentValue:string){
   const selected=component(componentValue);
   const sourceRepo=await activeSourceRepoForComponent(selected);
   const central=(await db().query(
-    "select * from database_packages where component=$1 and source_repo=$2 and database_target='customer' and status='current' order by published_at desc nulls last,created_at desc limit 1",
+    "select * from database_packages where component=$1 and source_repo=$2 and database_target='customer' and status='current' and package->'validation'->>'format'='orbitfs-real-supabase-validation-v1' and package->'validation'->>'status'='passed' order by published_at desc nulls last,created_at desc limit 1",
     [selected,sourceRepo]
   )).rows[0]||null;
   if(central)return central;
