@@ -64,6 +64,10 @@ jobs:
         if: steps.profile.outputs.run == 'true'
         run: node --test scripts/license-query-filter.test.mjs
 
+      - name: Verify safe Main/Fallback source selection
+        if: steps.profile.outputs.run == 'true'
+        run: node --test scripts/github-profile-switch-contract.test.mjs
+
       - name: Typecheck
         if: steps.profile.outputs.run == 'true'
         run: npm run typecheck
