@@ -1,6 +1,6 @@
 import {db} from '../db';
 import type {SourceFamily} from './source-vercel';
-import {configuredVercelFamily} from './source-vercel';
+import {configuredVercelFamily,verifyVercelAccountProjects} from './source-vercel';
 
 type Service = {repo:string;workflow:string;projectId:string};
 const WORKFLOWS:Record<SourceFamily,Service[]>={
@@ -98,6 +98,38 @@ export async function syncSourceGitHubCredentials(profile:SourceFamily){
   updated.push(service.repo);
  }
  return updated;
+}
+
+/** Repair the standby GitHub Actions environment while MAIN is selected.
+ * This is an explicit owner action, not a public GET and not a source switch.
+ * The Fallback Vercel token is sealed in GitHub before any future handoff.
+ */
+export async function prepareFallbackGithubProduction(actorUserId:string|null,actor:string){
+ const state=(await db().query('select system_enabled,github_profile from system_settings where id=true')).rows[0];
+ if(Boolean(state?.system_enabled))throw new Error('Turn Master Authority OFF before preparing Fallback Production connections.');
+ if(String(state?.github_profile)!=='primary')
+  throw new Error('MAIN must be active to prepare Fallback without switching. Refresh the page.');
+
+ const {github:token}=credentials('fallback');
+ // Verify token ownership before touching any repository secrets.
+ const identity=await github('/user',token) as {login?:string};
+ if(String(identity.login||'').toLowerCase()!=='remipetrovich-design')
+  throw new Error('Fallback GitHub credential is not authenticated as remipetrovich-design.');
+ await verifyVercelAccountProjects('fallback');
+ // Existing implementation encrypts the selected Fallback Vercel token using
+ // each repository Production environment's public key, then writes only its
+ // VERCEL_TOKEN secret. Never read back encrypted Vercel Environment values.
+ const repositories=await syncSourceGitHubCredentials('fallback');
+ await db().query(
+  `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
+   values($1,$2,'github_profile.fallback_prepared','system_settings','github_profile',$3)`,
+  [actorUserId,actor,JSON.stringify({
+   profile:'primary',standby:'fallback',github_secrets:repositories,
+   secret_name:'VERCEL_TOKEN',scope:'production',
+   deployments_triggered:false,source_mode_changed:false,database_changed:false,
+  })]
+ );
+ return {repositories,prepared:repositories.length===3};
 }
 
 async function latestReadyDeployment(service:Service,token:string,teamId:string){
