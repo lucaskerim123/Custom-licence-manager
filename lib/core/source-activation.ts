@@ -25,6 +25,37 @@ function credentials(profile:SourceFamily){
  return {github,vercel,teamId:configuredVercelFamily(profile).teamId};
 }
 
+/**
+ * Replicate only selected account-switch credentials to the standby
+ * License Manager Vercel Production project. Credentials are never
+ * persisted to Git or the License Manager database.
+ */
+export async function syncLicenseManagerAccountConnections(profile:SourceFamily){
+ const {vercel,teamId}=credentials(profile);
+ const service=WORKFLOWS[profile][0];
+ const names=['ORBITFS_MAIN_VERCEL_TOKEN','ORBITFS_FALLBACK_VERCEL_TOKEN',
+  'ORBITFS_FALLBACK_GITHUB_TOKEN','ORBITFS_RELEASE_DISPATCH_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN'];
+ const updated:string[]=[];
+ for(const key of names){
+  const value=String(process.env[key]||'').trim();
+  if(!value||/^(change-me|replace-with|placeholder|your-)/i.test(value))continue;
+  let response:Response;
+  try{
+   response=await fetch('https://api.vercel.com/v10/projects/'+encodeURIComponent(service.projectId)+
+    '/env?upsert=true&teamId='+encodeURIComponent(teamId),{
+    method:'POST',cache:'no-store',signal:AbortSignal.timeout(12000),
+    headers:{authorization:'Bearer '+vercel,accept:'application/json','content-type':'application/json'},
+    body:JSON.stringify({key,value,target:['production'],type:'sensitive',
+      comment:'Managed by authoritative License Manager source switch'})
+   });
+  }catch{throw new Error('Vercel account connection sync failed for '+service.repo);}
+  if(!response.ok)throw new Error('Vercel rejected a required account connection for '+service.repo+
+   ' (HTTP '+response.status+'). Check selected Vercel account access.');
+  updated.push(key);
+ }
+ return updated;
+}
+
 async function github(path:string,token:string,method='GET',payload?:Record<string,string>){
  let response:Response;
  try{response=await fetch('https://api.github.com'+path,{
