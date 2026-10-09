@@ -1,0 +1,66 @@
+name: Repair Fallback Vercel GitHub Connection
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/repair-fallback-production.mjs
+      - scripts/repair-fallback-production.test.mjs
+      - .github/workflows/repair-fallback-vercel-connection.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: license-manager-fallback-connection-repair
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Validate safe credential repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout MAIN
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify fallback connection contracts
+        run: node --test scripts/repair-fallback-production.test.mjs
+
+  repair:
+    name: Repair Fallback Production GitHub secrets and queue existing deploys
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: production
+    env:
+      MAIN_VERCEL_API_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout MAIN
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify MAIN Vercel credential exists
+        shell: bash
+        run: |
+          if [ -z "$MAIN_VERCEL_API_TOKEN" ]; then
+            echo "::error::MAIN License Manager GitHub Production secret VERCEL_TOKEN is missing."
+            exit 1
+          fi
+      - name: Repair Fallback GitHub Production Vercel credentials
+        run: node scripts/repair-fallback-production.mjs
