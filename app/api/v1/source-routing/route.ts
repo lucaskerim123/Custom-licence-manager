@@ -6,13 +6,17 @@ export const dynamic='force-dynamic';
 
 // This API is the one public routing authority. It never changes the selected
 // profile, deploys a service, or exposes account credentials.
+const PRIMARY_DESTINATIONS={
+  panel:{projectId:'prj_o5ju4zFGSDZelX4SA7GAu3rQqtap',url:'https://dev.incendiarynetworks.cc'},
+  billing:{projectId:'prj_3ARdg4cRikU2OiMeZjZDvQ3JuEZd',url:'https://orbitfsstore.vercel.app'},
+} as const;
 const FALLBACK_DESTINATIONS={
   panel:{projectId:'prj_24FvbyWw7CAEbiug1Ec18p51z7WJ',url:'https://orbitfs-dev-panel-fallback.vercel.app'},
   billing:{projectId:'prj_BZNKPOm5pTcMdD4QrOXPOqpE7Imq',url:'https://orbitfs-billing-fallback.vercel.app'},
 } as const;
 
 type Readiness={panel:boolean;billing:boolean};
-let healthCache:{until:number;promise:Promise<Readiness>}|undefined;
+let healthCache:Partial<Record<'primary'|'fallback',{until:number;promise:Promise<Readiness>}>>={};
 
 async function isReady(projectId:string,token:string,teamId:string):Promise<boolean>{
   if(!token||/^(change-me|replace-with|placeholder|your-)/i.test(token))return false;
@@ -33,33 +37,34 @@ async function isReady(projectId:string,token:string,teamId:string):Promise<bool
   }catch{return false;}
 }
 
-function fallbackReadiness(){
-  if(healthCache&&healthCache.until>Date.now())return healthCache.promise;
-  const family=configuredVercelFamily('fallback');
+function familyReadiness(profile:'primary'|'fallback'){
+  const cached=healthCache[profile];
+  if(cached&&cached.until>Date.now())return cached.promise;
+  const family=configuredVercelFamily(profile);
+  const destinations=profile==='fallback'?FALLBACK_DESTINATIONS:PRIMARY_DESTINATIONS;
   const token=String(process.env[family.tokenEnv]||'').trim();
   const promise=Promise.all([
-    isReady(FALLBACK_DESTINATIONS.panel.projectId,token,family.teamId),
-    isReady(FALLBACK_DESTINATIONS.billing.projectId,token,family.teamId),
+    isReady(destinations.panel.projectId,token,family.teamId),
+    isReady(destinations.billing.projectId,token,family.teamId),
   ]).then(([panel,billing])=>({panel,billing}));
-  // Cache only readiness, not authoritative profile. Each request reads the
-  // License Manager DB so changing MAIN/FALLBACK is effective immediately.
-  healthCache={until:Date.now()+12000,promise};
+  healthCache[profile]={until:Date.now()+12000,promise};
   return promise;
 }
 
 export async function GET(){
  try{
   const profile=await getGithubProfile();
-  const ready=profile==='fallback'?await fallbackReadiness():{panel:true,billing:true};
+  const ready=await familyReadiness(profile);
+  const destinations=profile==='fallback'?FALLBACK_DESTINATIONS:PRIMARY_DESTINATIONS;
   return NextResponse.json({
     profile,
     mode:profile==='fallback'?'fallback':'main',
     ready,
     targets:{
-      panel:FALLBACK_DESTINATIONS.panel.url,
-      billing:FALLBACK_DESTINATIONS.billing.url,
+      panel:destinations.panel.url,
+      billing:destinations.billing.url,
     },
-    routingComplete:profile==='primary'||(ready.panel&&ready.billing),
+    routingComplete:ready.panel&&ready.billing,
     authority:'License Manager',
   },{headers:{'cache-control':'no-store, no-cache, must-revalidate'}});
  }catch{
