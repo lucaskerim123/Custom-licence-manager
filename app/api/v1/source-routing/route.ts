@@ -37,6 +37,21 @@ async function isReady(projectId:string,token:string,teamId:string):Promise<bool
   }catch{return false;}
 }
 
+async function reachableProductionPage(url:string):Promise<boolean>{
+  try{
+    // READY in Vercel is not sufficient if the application responds with
+    // server errors or Vercel Authentication. Probe the fixed public URL too.
+    const response=await fetch(url,{
+      method:'GET',cache:'no-store',redirect:'manual',
+      signal:AbortSignal.timeout(2500),headers:{accept:'text/html'}
+    });
+    // Login redirects are allowed; Vercel login protection (401/403)
+    // and application errors cannot receive user traffic.
+    return (response.status>=200&&response.status<300) ||
+      [301,302,303,307,308].includes(response.status);
+  }catch{return false;}
+}
+
 function familyReadiness(profile:'primary'|'fallback'){
   const cached=healthCache[profile];
   if(cached&&cached.until>Date.now())return cached.promise;
@@ -46,7 +61,13 @@ function familyReadiness(profile:'primary'|'fallback'){
   const promise=Promise.all([
     isReady(destinations.panel.projectId,token,family.teamId),
     isReady(destinations.billing.projectId,token,family.teamId),
-  ]).then(([panel,billing])=>({panel,billing}));
+  ]).then(async([panel,billing])=>{
+    const [panelLive,billingLive]=await Promise.all([
+      panel?reachableProductionPage(destinations.panel.url):Promise.resolve(false),
+      billing?reachableProductionPage(destinations.billing.url):Promise.resolve(false),
+    ]);
+    return {panel:panel&&panelLive,billing:billing&&billingLive};
+  });
   healthCache[profile]={until:Date.now()+12000,promise};
   return promise;
 }
