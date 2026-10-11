@@ -1,6 +1,7 @@
 import {requireUser} from '../../lib/session';
-import {listApiKeys,createApiKey,revokeApiKey,deleteRevokedApiKey,ApiScope} from '../../lib/core/api-keys';
+import {listApiKeys,createApiKey,revokeApiKey,deleteRevokedApiKey,regenerateApiKey,ApiScope} from '../../lib/core/api-keys';
 import ApiKeyForm from './form';
+import RegenerateApiKey from './regenerate-control';
 import SideNav from '../components/SideNav';
 import PageHeader from '../components/PageHeader';
 import TableTools from '../components/TableTools';
@@ -17,6 +18,15 @@ async function create(formData:FormData){
  const result=await createApiKey({name,scopes:selected,actorUserId:u.id});
  return result.key;
 }
+async function regenerate(formData:FormData){
+ 'use server';
+ const u=await requireUser();
+ if(!['owner','admin'].includes(u.role))throw new Error('Owner or Admin access required.');
+ const id=String(formData.get('id')||'').trim();
+ if(!/^[0-9a-f-]{36}$/i.test(id))throw new Error('Invalid API key ID.');
+ const result=await regenerateApiKey(id,u.id);
+ return result.key;
+}
 async function revoke(formData:FormData){'use server';const u=await requireUser();if(!['owner','admin'].includes(u.role))return;const id=String(formData.get('id')||'');if(id)await revokeApiKey(id,u.id);}
 async function deleteRevoked(formData:FormData){'use server';const u=await requireUser();if(!['owner','admin'].includes(u.role))return;const id=String(formData.get('id')||'');if(id)await deleteRevokedApiKey(id,u.id);}
 
@@ -31,12 +41,12 @@ export default async function ApiKeys(){
 
   <section className="card form-card">
    <div className="section-head"><div><div className="eyebrow">Machine credentials</div><h2>Create integration key</h2><p className="muted">Issue credentials here only. API Control no longer duplicates credential management.</p></div></div>
-   {canManage?<ApiKeyForm action={create} scopes={scopes}/>:<div className="notice">Only Owner and Admin accounts can create or revoke integration keys.</div>}
+   {canManage?<ApiKeyForm action={create} scopes={scopes}/>:<div className="notice">Only Owner and Admin accounts can create, regenerate or revoke integration keys.</div>}
   </section>
 
   <details className="section card collapsible-card">
    <summary className="collapsible-summary">
-    <div><div className="eyebrow">Credential inventory</div><h2>Managed keys</h2><p className="muted">Compact credential history. Only the final four characters remain visible after creation.</p></div>
+    <div><div className="eyebrow">Credential inventory</div><h2>Managed keys</h2><p className="muted">Active keys can be regenerated without changing their permissions. New values are displayed once; the previous values stop working immediately.</p></div>
     <div className="collapsible-summary-actions"><span className="badge">{keys.length} total</span><span className="collapse-chevron">⌄</span></div>
    </summary>
    <div className="collapsible-body">
@@ -49,7 +59,7 @@ export default async function ApiKeys(){
       <td><div className="compact-scope-list">{(Array.isArray(k.scopes)?k.scopes:[]).map((scope:string)=><span className="badge" key={scope}>{scope}</span>)}</div></td>
       <td><span className={k.status==='active'?'state-pill online':'state-pill offline'}>{k.status}</span></td>
       <td>{k.last_used_at?new Date(k.last_used_at).toLocaleString():'Never'}</td>
-      <td>{canManage&&<div className="actions">{k.status==='active'&&<form action={revoke}><input type="hidden" name="id" value={k.id}/><button className="button danger">Revoke</button></form>}{k.status==='revoked'&&<form action={deleteRevoked}><input type="hidden" name="id" value={k.id}/><button className="button danger">Delete</button></form>}</div>}</td>
+      <td>{canManage&&<div className="actions">{k.status==='active'&&<RegenerateApiKey id={k.id} name={k.name} action={regenerate}/>} {k.status==='active'&&<form action={revoke}><input type="hidden" name="id" value={k.id}/><button className="button danger">Revoke</button></form>}{k.status==='revoked'&&<form action={deleteRevoked}><input type="hidden" name="id" value={k.id}/><button className="button danger">Delete</button></form>}</div>}</td>
      </tr>)}</tbody>
     </table></div>
    </div>
