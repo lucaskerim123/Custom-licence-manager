@@ -15,7 +15,7 @@ const BRANCH = 'UPDATE_RELEASE';
 async function engineSource(){
   const profile=await getGithubProfile();
   return profile==='fallback'
-    ? {profile,repo:'remipetrovich-design/OrbitFS_Engine',tokenEnv:'ORBITFS_FALLBACK_GITHUB_TOKEN'}
+    ? {profile,repo:'lucaskerim123/V1-vercel-engine',tokenEnv:'ORBITFS_RELEASE_DISPATCH_TOKEN'}
     : {profile,repo:'lucaskerim123/V1-vercel-engine',tokenEnv:'ORBITFS_RELEASE_DISPATCH_TOKEN'};
 }
 const MAX_FILES = 5000;
@@ -40,7 +40,6 @@ function componentFor(path: string) {
   return 'shared';
 }
 function githubToken(source:{tokenEnv:string}) {
-  // Never borrow the other account's token when the selected profile is unavailable.
   return String(process.env[source.tokenEnv] || '').trim();
 }
 async function github(source:{repo:string;tokenEnv:string},path: string) {
@@ -55,7 +54,7 @@ async function github(source:{repo:string;tokenEnv:string},path: string) {
 }
 async function authorized(request: Request) {
   // A standby License Manager may report health but cannot authorize source.
-  if(await getGithubProfile()!=='primary')return {error:reply('SOURCE_MODE_STANDBY',503)};
+  if(await getGithubProfile()!=='fallback')return {error:reply('SOURCE_MODE_STANDBY',503)};
   const licenseKey = request.headers.get('x-license-key')?.trim() || '';
   const installationId = request.headers.get('x-installation-id')?.trim() || '';
   if (!licenseKey || !installationId) return { error: reply('ENGINE_INSTALLATION_CREDENTIAL_REQUIRED', 401) };

@@ -48,8 +48,8 @@ export async function POST(request: Request) {
   try {
     // The two License Managers share one database, but only the currently
     // selected deployment may answer customer licence validations.
-    if(await getGithubProfile()!=='primary'){
-      return NextResponse.json({valid:false,code:'SOURCE_MODE_STANDBY',activeMode:'fallback'},
+    if(await getGithubProfile()!=='fallback'){
+      return NextResponse.json({valid:false,code:'SOURCE_MODE_STANDBY',activeMode:'main'},
        {status:503,headers:{'cache-control':'no-store'}});
     }
     const result = await validateLicense({
