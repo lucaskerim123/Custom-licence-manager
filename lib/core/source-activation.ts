@@ -144,7 +144,14 @@ async function applicationReady(service:Service):Promise<boolean>{
  }catch{return false;}
 }
 
-async function latestReadyDeployment(service:Service,token:string,teamId:string){
+async function latestReadyDeployment(service:Service,token:string,teamId:string,githubToken:string){
+ // A READY deployment can be months old. Never authorize cutover unless the
+ // deployed GitHub identity and SHA match the destination's current main.
+ const repoRef=await github('/repos/'+service.repo+'/git/ref/heads/main',githubToken) as
+  {object?:{sha?:string}};
+ const expectedSha=String(repoRef.object?.sha||'').trim().toLowerCase();
+ if(!/^[a-f0-9]{40}$/.test(expectedSha))
+  throw new Error('Cannot verify current main commit for '+service.repo);
  let response:Response;
  try{response=await fetch('https://api.vercel.com/v6/deployments?projectId='+encodeURIComponent(service.projectId)+
   '&teamId='+encodeURIComponent(teamId)+'&target=production&limit=1',{
@@ -152,15 +159,21 @@ async function latestReadyDeployment(service:Service,token:string,teamId:string)
    signal:AbortSignal.timeout(12000)
   });}catch{throw new Error('Vercel project health check timed out for '+service.repo);}
  if(!response.ok)throw new Error('Vercel denied the Production health check for '+service.repo+' (HTTP '+response.status+').');
- const data=await response.json() as {deployments?:Array<{id?:string;readyState?:string}>};
- return Array.isArray(data.deployments)&&data.deployments.length>0&&
-  data.deployments[0].readyState==='READY';
+ const data=await response.json() as {deployments?:Array<{
+  readyState?:string;state?:string;
+  meta?:{githubCommitSha?:string;githubOrg?:string;githubRepo?:string}
+ }>};
+ const newest=data.deployments?.[0];
+ if(!newest||!(newest.readyState==='READY'||newest.state==='READY'))return false;
+ const deployedRepo=String(newest.meta?.githubOrg||'')+'/'+String(newest.meta?.githubRepo||'');
+ const deployedSha=String(newest.meta?.githubCommitSha||'').toLowerCase();
+ return deployedRepo===service.repo&&deployedSha===expectedSha;
 }
 export async function inspectSourceDeployments(profile:SourceFamily){
- const {vercel,teamId}=credentials(profile);
+ const {github:githubToken,vercel,teamId}=credentials(profile);
  const statuses=await Promise.all(WORKFLOWS[profile].map(async service=>({
   repo:service.repo,projectId:service.projectId,
-  ready:(await latestReadyDeployment(service,vercel,teamId))&&(await applicationReady(service))
+  ready:(await latestReadyDeployment(service,vercel,teamId,githubToken))&&(await applicationReady(service))
  })));
  return {profile,services:statuses,allReady:statuses.every(x=>x.ready)};
 }
