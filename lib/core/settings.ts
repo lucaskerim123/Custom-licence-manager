@@ -413,7 +413,19 @@ export async function setGithubProfile(
     const actual=String(current?.github_profile||'primary').toLowerCase()==='fallback'?'fallback':'primary';
     if(Boolean(current?.system_enabled))throw new Error('Master Authority must be OFF before changing MAIN/FALLBACK mode');
     if(actual!==expected)throw new Error('Source mode changed since this page was loaded. Refresh before switching.');
-    const updated=(await client.query('update system_settings set github_profile=$1,updated_at=now() where id=true returning *',[next])).rows[0];
+    // Publish the mode and pulse revision in the same transaction. This avoids
+    // a selected mode becoming visible without a durable refresh directive.
+    const updated=(await client.query(
+      `update system_settings set github_profile=$1,
+       pulse_revision=coalesce(pulse_revision,0)+1,
+       pulse_at=now(),pulse_reason='source-mode-changed',updated_at=now()
+       where id=true returning *`,[next]
+    )).rows[0];
+    await client.query(
+      `insert into license_pulses(revision,action,scope,reason,payload,requires_ack,created_by_user_id,created_by)
+       values($1,'refresh_authority','global','source-mode-changed',$2,true,$3,$4)`,
+      [updated.pulse_revision,JSON.stringify({source:'github-profile-switch',from:actual,to:next,mode:next==='primary'?'main':'fallback'}),actorUserId,actor]
+    );
     await client.query(
       `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
        values($1,$2,'github_profile.changed','system_settings','github_profile',$3)`,
@@ -429,19 +441,7 @@ export async function setGithubProfile(
       })],
     );
     await client.query('commit');
-    // A new global revision tells installations to refresh their authoritative
-    // mode and release routing. Failure must be visible, not called success.
-    try{
-      const pulse=await sendPulse(actorUserId,actor,'source-mode-changed',{
-        source:'github-profile-switch',from:actual,to:next,
-        pulse_action:'refresh_authority',pulse_scope:'global',requires_ack:true,
-      });
-      return {...updated,sourceActivation:{queued:[],failed:[],pulseRevision:pulse.pulse_revision}};
-    }catch(error){
-      return {...updated,sourceActivation:{queued:[],failed:[
-        'Mode changed, but global configuration pulse failed: '+(error instanceof Error?error.message:'unknown error')
-      ]}};
-    }
+    return {...updated,sourceActivation:{queued:[],failed:[],pulseRevision:Number(updated.pulse_revision)}};
   }catch(error){
     await client.query('rollback').catch(()=>{});
     throw error;
