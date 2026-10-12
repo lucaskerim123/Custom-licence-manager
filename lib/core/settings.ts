@@ -1,6 +1,6 @@
 import { db } from '../db';
 import {verifyVercelAccountProjects} from './source-vercel';
-import {syncSourceGitHubCredentials,dispatchSourceProductionDeployments,syncLicenseManagerAccountConnections} from './source-activation';
+import {syncSourceGitHubCredentials,dispatchSourceProductionDeployments,syncLicenseManagerAccountConnections,inspectSourceDeployments} from './source-activation';
 
 export type SettingField='system_enabled'|'licensing_enabled'|'maintenance_mode'|'customer_self_unlock_enabled'|'release_system_enabled'|'auto_technical_approval_enabled'|'deployment_enabled'|'base_deployment_enabled'|'update_deployment_enabled'|'rollback_enabled';
 export type GithubProfileName='primary'|'fallback';
@@ -387,6 +387,19 @@ export async function setGithubProfile(
   // account token into each selected GitHub Production environment.
   const vercelLicenseCredentials=await syncLicenseManagerAccountConnections(next);
   const githubSecrets=await syncSourceGitHubCredentials(next);
+  // Stage the destination while keeping the old family authoritative. A
+  // deployment dispatch is not proof of readiness and must never flip mode.
+  const destination=await inspectSourceDeployments(next);
+  if(!destination.allReady){
+    const absent=destination.services.filter(service=>!service.ready).map(service=>service.repo);
+    const queued=await dispatchSourceProductionDeployments(next,absent);
+    await db().query(
+      `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
+       values($1,$2,'github_profile.handover_preparing','system_settings','github_profile',$3)`,
+      [actorUserId,actor,JSON.stringify({from:expected,to:next,queued,ready:destination.services,database_changed:false})],
+    );
+    throw new Error('Destination services are being prepared: '+queued.join(', ')+'. Current mode remains active. Verify readiness and move the lever again to complete handover.');
+  }
   const pool=db();
   const client=await pool.connect();
   try{
@@ -411,16 +424,18 @@ export async function setGithubProfile(
       })],
     );
     await client.query('commit');
-    // The mode is authoritative immediately; the target service workflows
-    // each gate on the fresh License Manager API and deploy to their own team.
-    // Deployment failures are reported, never mislabeled as a completed handoff.
+    // A new global revision tells installations to refresh their authoritative
+    // mode and release routing. Failure must be visible, not called success.
     try{
-      const queued=await dispatchSourceProductionDeployments(next);
-      return {...updated,sourceActivation:{queued,failed:[]}};
+      const pulse=await sendPulse(actorUserId,actor,'source-mode-changed',{
+        source:'github-profile-switch',from:actual,to:next,
+        pulse_action:'refresh_authority',pulse_scope:'global',requires_ack:true,
+      });
+      return {...updated,sourceActivation:{queued:[],failed:[],pulseRevision:pulse.pulse_revision}};
     }catch(error){
-      return {...updated,sourceActivation:{
-        queued:[],failed:[error instanceof Error?error.message:'Could not queue Production service deployments.']
-      }};
+      return {...updated,sourceActivation:{queued:[],failed:[
+        'Mode changed, but global configuration pulse failed: '+(error instanceof Error?error.message:'unknown error')
+      ]}};
     }
   }catch(error){
     await client.query('rollback').catch(()=>{});
