@@ -392,6 +392,11 @@ export async function setGithubProfile(
   const destination=await inspectSourceDeployments(next);
   if(!destination.allReady){
     const absent=destination.services.filter(service=>!service.ready).map(service=>service.repo);
+    const recent=(await db().query(
+      "select 1 from audit_events where action='github_profile.handover_preparing' and details->>'from'=$1 and details->>'to'=$2 and created_at>now()-interval '10 minutes' limit 1",
+      [expected,next]
+    )).rowCount;
+    if(recent)throw new Error('Destination services are being prepared: '+absent.join(', ')+'. Waiting for previously queued deployments. Current mode remains active.');
     const queued=await dispatchSourceProductionDeployments(next,absent);
     await db().query(
       `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
