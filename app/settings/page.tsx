@@ -64,7 +64,7 @@ async function switchGithubProfile(_previous:SourceSwitchResult,formData:FormDat
  }
  revalidatePath('/settings');revalidatePath('/');
  return {status:'success',message:'Source mode changed to '+(next==='primary'?'MAIN':'FALLBACK')+
-  '. The target service production builds were requested. Domain routing is not complete until all three are healthy.'};
+  '. Destination deployments passed readiness checks before cutover. A global authority-refresh pulse was issued; runtime acknowledgments and old-mode shutdown remain to be verified.'};
 }
 
 async function prepareFallbackConnections():Promise<{status:'success'|'error';message:string}>{
