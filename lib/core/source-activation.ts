@@ -147,13 +147,14 @@ async function applicationReady(service:Service):Promise<boolean>{
 async function latestReadyDeployment(service:Service,token:string,teamId:string){
  let response:Response;
  try{response=await fetch('https://api.vercel.com/v6/deployments?projectId='+encodeURIComponent(service.projectId)+
-  '&teamId='+encodeURIComponent(teamId)+'&target=production&state=READY&limit=1',{
+  '&teamId='+encodeURIComponent(teamId)+'&target=production&limit=1',{
    cache:'no-store',headers:{authorization:'Bearer '+token,accept:'application/json'},
    signal:AbortSignal.timeout(12000)
   });}catch{throw new Error('Vercel project health check timed out for '+service.repo);}
  if(!response.ok)throw new Error('Vercel denied the Production health check for '+service.repo+' (HTTP '+response.status+').');
  const data=await response.json() as {deployments?:Array<{id?:string;readyState?:string}>};
- return Array.isArray(data.deployments)&&data.deployments.length>0;
+ return Array.isArray(data.deployments)&&data.deployments.length>0&&
+  data.deployments[0].readyState==='READY';
 }
 export async function inspectSourceDeployments(profile:SourceFamily){
  const {vercel,teamId}=credentials(profile);
