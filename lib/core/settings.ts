@@ -450,6 +450,31 @@ export async function setGithubProfile(
   }
 }
 
+export async function getSourceHandoverStatus(){
+ const settings=await getSettings();
+ const mode=settings?.github_profile==='fallback'?'fallback':'main';
+ const result=(await db().query(
+  `select id,revision,created_at,payload from license_pulses
+   where action='refresh_authority' and reason='source-mode-changed'
+   order by revision desc limit 1`
+ )).rows[0];
+ if(!result)return {mode,stage:'no_handover',revision:null,received:0,applied:0,failed:0};
+ const receipts=(await db().query(
+  `select status,count(*)::int as count from license_pulse_receipts
+   where pulse_id=$1 group by status`,[result.id]
+ )).rows;
+ const counts=Object.fromEntries(receipts.map((row:any)=>[String(row.status),Number(row.count)]));
+ const applied=counts.applied||0,failed=counts.failed||0,received=counts.received||0;
+ return {
+  mode,revision:Number(result.revision),startedAt:result.created_at,
+  stage:failed?'runtime_failed':applied?'runtime_acknowledged':'awaiting_runtime_ack',
+  received,applied,failed,
+  // This is observable receipt state, not proof of both Base and Engine
+  // changing API provider or evidence that old services may be disabled.
+  confirmed:false
+ };
+}
+
 export async function updateRuntimePolicy(input:Partial<RuntimePolicy>,actorUserId:string|null,actor:string){
   const current=await getSettings();
   const clamp=(value:unknown,min:number,max:number,fallback:number)=>{
