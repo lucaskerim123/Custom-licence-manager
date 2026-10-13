@@ -13,10 +13,7 @@ export const maxDuration = 60;
 
 const BRANCH = 'UPDATE_RELEASE';
 async function engineSource(){
-  const profile=await getGithubProfile();
-  return profile==='fallback'
-    ? {profile,repo:'lucaskerim123/V1-vercel-engine',tokenEnv:'ORBITFS_RELEASE_DISPATCH_TOKEN'}
-    : {profile,repo:'lucaskerim123/V1-vercel-engine',tokenEnv:'ORBITFS_RELEASE_DISPATCH_TOKEN'};
+  return {profile:'primary',repo:'lucaskerim123/V1-vercel-engine',tokenEnv:'ORBITFS_RELEASE_DISPATCH_TOKEN'};
 }
 const MAX_FILES = 5000;
 const MAX_UNPACKED = 210 * 1024 * 1024;
