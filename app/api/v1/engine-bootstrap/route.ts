@@ -54,7 +54,7 @@ async function github(source:{repo:string;tokenEnv:string},path: string) {
 }
 async function authorized(request: Request) {
   // A standby License Manager may report health but cannot authorize source.
-  if(await getGithubProfile()!=='fallback')return {error:reply('SOURCE_MODE_STANDBY',503)};
+  if(await getGithubProfile()!=='primary')return {error:reply('SOURCE_MODE_STANDBY',503)};
   const licenseKey = request.headers.get('x-license-key')?.trim() || '';
   const installationId = request.headers.get('x-installation-id')?.trim() || '';
   if (!licenseKey || !installationId) return { error: reply('ENGINE_INSTALLATION_CREDENTIAL_REQUIRED', 401) };
