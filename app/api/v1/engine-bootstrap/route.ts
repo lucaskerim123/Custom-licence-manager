@@ -36,11 +36,18 @@ function componentFor(path: string) {
   for (const component of COMPONENTS) if (path.startsWith('src/addons/' + component + '/')) return component;
   return 'shared';
 }
-function githubToken(source:{tokenEnv:string}) {
-  const names=source.repo.startsWith('remipetrovich-design/')?['FALLBACK_GITHUB_TOKEN','FALLBACK_GITHUB_RELEASE_TOKEN','ORBITFS_FALLBACK_GITHUB_TOKEN']:['MAIN_GITHUB_TOKEN','MAIN_GITHUB_RELEASE_TOKEN','ORBITFS_PRIMARY_GITHUB_TOKEN','ORBITFS_RELEASE_DISPATCH_TOKEN'];
-  return names.map(name=>String(process.env[name]||'').trim()).find(Boolean)||'';
+type EngineGithubSource = { repo: string; tokenEnv: string };
+function githubToken(source: EngineGithubSource) {
+  const names = source.repo.startsWith('remipetrovich-design/')
+    ? ['FALLBACK_GITHUB_TOKEN', 'FALLBACK_GITHUB_RELEASE_TOKEN', 'ORBITFS_FALLBACK_GITHUB_TOKEN']
+    : ['MAIN_GITHUB_TOKEN', 'MAIN_GITHUB_RELEASE_TOKEN', 'ORBITFS_PRIMARY_GITHUB_TOKEN', 'ORBITFS_RELEASE_DISPATCH_TOKEN'];
+  // Only prioritise the configured token when it belongs to this source profile.
+  const order = names.includes(source.tokenEnv)
+    ? [source.tokenEnv, ...names.filter(name => name !== source.tokenEnv)]
+    : names;
+  return order.map(name => String(process.env[name] || '').trim()).find(Boolean) || '';
 }
-async function github(source:{repo:string;tokenEnv:string},path: string) {
+async function github(source: EngineGithubSource, path: string) {
   const token = githubToken(source);
   if (!token) throw Object.assign(new Error('Private source credential missing'), { status: 503, code: 'ENGINE_SOURCE_CREDENTIAL_MISSING' });
   const response = await fetch('https://api.github.com/repos/' + source.repo + path, {
