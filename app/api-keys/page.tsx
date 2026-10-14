@@ -1,5 +1,5 @@
 import {requireUser} from '../../lib/session';
-import {listApiKeys,createApiKey,revokeApiKey,deleteRevokedApiKey,regenerateApiKey,ApiScope,ApiKeyEnvironment,API_KEY_ENVIRONMENT,ApiKeyEnvironment,API_KEY_ENVIRONMENT} from '../../lib/core/api-keys';
+import {listApiKeys,createApiKey,revokeApiKey,deleteRevokedApiKey,regenerateApiKey,ApiScope,ApiKeyEnvironment,API_KEY_ENVIRONMENT} from '../../lib/core/api-keys';
 import ApiKeyForm from './form';
 import RegenerateApiKey from './regenerate-control';
 import SideNav from '../components/SideNav';
@@ -59,7 +59,6 @@ export default async function ApiKeys(){
       <td><strong>{k.name}</strong></td>
       <td className="mono">lm_••••{k.key_last4}</td>
       <td><div className="compact-scope-list">{(Array.isArray(k.scopes)?k.scopes:[]).map((scope:string)=><span className="badge" key={scope}>{scope}</span>)}</div></td>
-      <td><strong>{k.environment==='main'?'Main':k.environment==='fallback'?'Fallback':'Unassigned'}</strong></td>
       <td><strong>{k.environment==='main'?'Main':k.environment==='fallback'?'Fallback':'Unassigned'}</strong></td>
       <td><span className={k.status==='active'?'state-pill online':'state-pill offline'}>{k.status}</span></td>
       <td>{k.last_used_at?new Date(k.last_used_at).toLocaleString():'Never'}</td>
