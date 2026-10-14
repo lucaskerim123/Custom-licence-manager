@@ -1,5 +1,5 @@
 'use client';
-import {useActionState,useState} from 'react';
+import {useActionState,useEffect,useRef,useState,startTransition} from 'react';
 import {useFormStatus} from 'react-dom';
 
 type GithubProfile='primary'|'fallback';
@@ -69,6 +69,18 @@ export default function GithubProfileControl({profile,handoverReady,allowPrepara
   void prepareFallbackAction().then(result=>setPrepareResult(result)).catch(()=>setPrepareResult({status:'error',message:'Fallback preparation request failed. No source switch was performed.'})).finally(()=>setPreparing(false));
  };
  const [result,formAction,isPending]=useActionState<SourceSwitchResult,FormData>(action,{status:'idle',message:''});
+ const handoverForm=useRef<HTMLFormElement>(null);
+ const retryCount=useRef(0);
+ useEffect(()=>{
+  if(result.status!=='preparing'||!acknowledged||!handoverForm.current)return;
+  if(retryCount.current>=40)return;
+  const timer=setTimeout(()=>{
+   if(!handoverForm.current)return;
+   retryCount.current++;
+   startTransition(()=>formAction(new FormData(handoverForm.current!)));
+  },15000);
+  return ()=>clearTimeout(timer);
+ },[result,isPending,acknowledged,formAction]);
  const target:GithubProfile=profile==='primary'?'fallback':'primary';
  const activeLabel=profile==='primary'?'MAIN':'FALLBACK';
  const targetLabel=target==='primary'?'MAIN':'FALLBACK';
@@ -87,7 +99,7 @@ export default function GithubProfileControl({profile,handoverReady,allowPrepara
       <strong>{handoverReady?'HANDOVER READY':'SWITCH LOCKED'}</strong>
       <small>{handoverReady?'Tick the checkbox to unlock the lever':'Owner confirmation required'}</small>
     </div></div>
-    <form action={formAction}>
+    <form ref={handoverForm} action={formAction}>
      <input type="hidden" name="profile" value={target}/>
      <input type="hidden" name="expected_profile" value={profile}/>
      <div className="github-mode-console">
@@ -125,7 +137,7 @@ export default function GithubProfileControl({profile,handoverReady,allowPrepara
        <p>These are server-side preflight credentials. They can use your existing account tokens; the two GitHub/Vercel families must remain separate.</p>
      </div>}
      {result.status==='preparing'&&<p role="status" style={{padding:'12px 14px',margin:'12px 0',border:'1px solid #e1a72e',borderRadius:8,fontSize:12}}>
-       <strong>Preparing {targetLabel}.</strong> {result.message} Use the lever again once the destination deployments are ready.
+       <strong>Preparing {targetLabel}.</strong> {result.message} The switch completes automatically after destination deployments pass verification while this page remains open.
      </p>}
      {result.status==='error'&&<p role="alert" style={{padding:'12px 14px',margin:'12px 0',border:'1px solid #dc5555',borderRadius:8,background:'rgba(239,68,68,.12)',fontSize:12}}>
        <strong>Switch not completed.</strong> {result.message} The active mode was not changed by this failed request.
