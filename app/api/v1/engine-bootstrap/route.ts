@@ -37,25 +37,27 @@ function componentFor(path: string) {
   return 'shared';
 }
 type EngineGithubSource = { repo: string; tokenEnv: string };
-function githubToken(source: EngineGithubSource) {
+function githubTokenCandidates(source: EngineGithubSource) {
   const names = source.repo.startsWith('remipetrovich-design/')
     ? ['FALLBACK_GITHUB_TOKEN', 'FALLBACK_GITHUB_RELEASE_TOKEN', 'ORBITFS_FALLBACK_GITHUB_TOKEN']
     : ['MAIN_GITHUB_TOKEN', 'MAIN_GITHUB_RELEASE_TOKEN', 'ORBITFS_PRIMARY_GITHUB_TOKEN', 'ORBITFS_RELEASE_DISPATCH_TOKEN'];
-  // Only prioritise the configured token when it belongs to this source profile.
-  const order = names.includes(source.tokenEnv)
-    ? [source.tokenEnv, ...names.filter(name => name !== source.tokenEnv)]
-    : names;
-  return order.map(name => String(process.env[name] || '').trim()).find(Boolean) || '';
+  // Validate each available account-local token rather than pinning a stale
+  // legacy environment variable ahead of a working credential.
+  return [...new Set(names.map(name => String(process.env[name] || '').trim()).filter(Boolean))];
 }
 async function github(source: EngineGithubSource, path: string) {
-  const token = githubToken(source);
-  if (!token) throw Object.assign(new Error('Private source credential missing'), { status: 503, code: 'ENGINE_SOURCE_CREDENTIAL_MISSING' });
-  const response = await fetch('https://api.github.com/repos/' + source.repo + path, {
-    headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'OrbitFS-Custom-License-Manager' },
-    cache: 'no-store', signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw Object.assign(new Error('GitHub source request failed'), { status: 503, code: 'ENGINE_SOURCE_UNAVAILABLE' });
-  return response.json();
+  const tokens = githubTokenCandidates(source);
+  if (!tokens.length) throw Object.assign(new Error('Private source credential missing'), { status: 503, code: 'ENGINE_SOURCE_CREDENTIAL_MISSING' });
+  let response: Response | null = null;
+  for (const token of tokens) {
+    response = await fetch('https://api.github.com/repos/' + source.repo + path, {
+      headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'OrbitFS-Custom-License-Manager' },
+      cache: 'no-store', signal: AbortSignal.timeout(30_000),
+    });
+    if (response.ok) return response.json();
+    if (![401, 403, 404].includes(response.status)) break;
+  }
+  throw Object.assign(new Error('GitHub Engine source request failed (HTTP ' + (response?.status || 'unknown') + ')'), { status: 503, code: 'ENGINE_SOURCE_UNAVAILABLE' });
 }
 async function authorized(request: Request) {
   // A standby License Manager may report health but cannot authorize source.
