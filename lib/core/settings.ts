@@ -399,12 +399,15 @@ export async function setGithubProfile(
   await resumeSourceServices(next);
   const destination=await inspectSourceDeployments(next);
   if(!destination.allReady){
-    const absent=destination.services.filter(service=>!service.ready).map(service=>service.repo);
-    const licenseRepo=next==='fallback'
-      ?'remipetrovich-design/OrbitFS-License-Administration'
-      :'lucaskerim123/Custom-licence-manager';
-    throw new Error('Destination services are not ready: '+absent.join(', ')+'. Resume completed; use the explicit manual Deploy controls for missing production builds, then retry the switch. No deployment was queued and the current mode remains active.');
+    const absent=destination.services.filter(service=>!service.ready)
+      .map(service=>service.repo+' ('+service.reason+')');
+    throw new Error('Destination projects resumed, but production services are not operational: '+absent.join('; ')+
+      '. No deployment was queued and the current mode remains active.');
   }
+  // Current production commits are diagnostic only. Switching to an already
+  // functioning standby must not silently trigger a build or redeployment.
+  const outdated=destination.services.filter(service=>!service.current).map(service=>service.repo);
+
   const pool=db();
   const client=await pool.connect();
   try{
@@ -443,6 +446,8 @@ export async function setGithubProfile(
         acknowledged:true,github_targets:checked,
         vercel_deployment_workflows:destinations,
         verified_vercel_projects:projects,
+        destination_production_current:destination.allCurrent,
+        destination_outdated_repositories:outdated,
         verified_github_production_credentials:githubSecrets,
         synchronized_license_manager_connections:vercelLicenseCredentials,
         database_source:'lucaskerim123/Master-Database-System',
