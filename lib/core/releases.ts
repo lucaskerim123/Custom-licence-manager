@@ -6,7 +6,7 @@ import { compareOrbitReleaseVersions, isOrbitReleaseVersion, orbitReleaseVersion
 import { publishReleaseDatabasePackages, validateReleaseDatabasePackages } from './database-packages';
 import { getGithubProfile } from './settings';
 
-const ALLOWED_UPDATE_COMPONENTS = new Set(['base', 'mcp', 'apex', 'studio']);
+const ALLOWED_UPDATE_COMPONENTS = new Set(['base', 'engine-shared', 'mcp', 'apex', 'studio']);
 const MAX_ARTIFACT_BYTES = 75 * 1024 * 1024;
 const FORBIDDEN_PATHS = /(^|\/)(\.env(?:$|\.(?!example$))|\.git(?:\/|$)|node_modules(?:\/|$)|\.vercel(?:\/|$))/i;
 const BASE_DATABASE_RUNTIME_ACCESS_CONTRACT={
@@ -318,7 +318,7 @@ async function scanPackage(row:any,bytes:Buffer){
 
       const rawEngineComponents=engine?canonicalComponents(engine.components,'update'):[];
       const engineHasBase=rawEngineComponents.includes('base');
-      const engineComponents=rawEngineComponents.filter((x:string)=>['mcp','apex','studio'].includes(x));
+      const engineComponents=rawEngineComponents.filter((x:string)=>['engine-shared','mcp','apex','studio'].includes(x));
       const expectedEngine=[...engineTargets].sort().join(',');
       const actualEngine=[...engineComponents].sort().join(',');
       const engineFormat=engine&&['orbitfs-engine-release-v2','orbitfs-engine-release-v3'].includes(String(engine.format||''));
