@@ -191,11 +191,15 @@ export async function acknowledgePulse(input:{
        license_id=coalesce(excluded.license_id,license_pulse_receipts.license_id),
        client=coalesce(excluded.client,license_pulse_receipts.client),
        client_version=coalesce(excluded.client_version,license_pulse_receipts.client_version),
-       status=excluded.status,
-       result_code=excluded.result_code,
-       error=excluded.error,
-       resulting_license_state=excluded.resulting_license_state,
-       resulting_revision=excluded.resulting_revision,
+       status=case
+         when license_pulse_receipts.status in ('applied','failed') and excluded.status='received'
+           then license_pulse_receipts.status
+         else excluded.status end,
+       result_code=case when excluded.status='received' and license_pulse_receipts.status in ('applied','failed')
+         then license_pulse_receipts.result_code else excluded.result_code end,
+       error=case when excluded.status='received' and license_pulse_receipts.status in ('applied','failed') then license_pulse_receipts.error else excluded.error end,
+       resulting_license_state=case when excluded.status='received' and license_pulse_receipts.status in ('applied','failed') then license_pulse_receipts.resulting_license_state else excluded.resulting_license_state end,
+       resulting_revision=case when excluded.status='received' and license_pulse_receipts.status in ('applied','failed') then license_pulse_receipts.resulting_revision else excluded.resulting_revision end,
        details=license_pulse_receipts.details||excluded.details,
        applied_at=case when excluded.status in ('applied','failed') then now() else license_pulse_receipts.applied_at end,
        updated_at=now()
