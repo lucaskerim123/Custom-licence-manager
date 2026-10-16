@@ -1,7 +1,7 @@
-import {resumeSourceServices} from './source-pause';
+import {resumeSourceServices,pausePreviousSourceServices} from './source-pause';
 import { db } from '../db';
 import {verifyVercelAccountProjects} from './source-vercel';
-import {syncSourceGitHubCredentials,dispatchSourceProductionDeployments,syncLicenseManagerAccountConnections,inspectSourceDeployments} from './source-activation';
+import {syncSourceGitHubCredentials,syncLicenseManagerAccountConnections,inspectSourceDeployments} from './source-activation';
 
 export type SettingField='system_enabled'|'licensing_enabled'|'maintenance_mode'|'customer_self_unlock_enabled'|'release_system_enabled'|'auto_technical_approval_enabled'|'deployment_enabled'|'base_deployment_enabled'|'update_deployment_enabled'|'rollback_enabled';
 export type GithubProfileName='primary'|'fallback';
@@ -403,20 +403,7 @@ export async function setGithubProfile(
     const licenseRepo=next==='fallback'
       ?'remipetrovich-design/OrbitFS-License-Administration'
       :'lucaskerim123/Custom-licence-manager';
-    const stage=absent.includes(licenseRepo)?'license-manager':'other-services';
-    const required=stage==='license-manager'?[licenseRepo]:absent;
-    const recent=(await db().query(
-      "select 1 from audit_events where action='github_profile.handover_preparing' and details->>'from'=$1 and details->>'to'=$2 and details->>'stage'=$3 and created_at>now()-interval '10 minutes' limit 1",
-      [expected,next,stage]
-    )).rowCount;
-    if(recent)throw new Error('Destination services are being prepared: '+absent.join(', ')+'. Waiting for previously queued deployments. Current mode remains active.');
-    const queued=await dispatchSourceProductionDeployments(next,required);
-    await db().query(
-      `insert into audit_events(actor_user_id,actor,action,resource_type,resource_id,details)
-       values($1,$2,'github_profile.handover_preparing','system_settings','github_profile',$3)`,
-      [actorUserId,actor,JSON.stringify({from:expected,to:next,stage,queued,ready:destination.services,database_changed:false})],
-    );
-    throw new Error('Destination services are being prepared: '+queued.join(', ')+'. Current mode remains active. Verify readiness and move the lever again to complete handover.');
+    throw new Error('Destination services are not ready: '+absent.join(', ')+'. Resume completed; use the explicit manual Deploy controls for missing production builds, then retry the switch. No deployment was queued and the current mode remains active.');
   }
   const pool=db();
   const client=await pool.connect();
@@ -463,6 +450,19 @@ export async function setGithubProfile(
       })],
     );
     await client.query('commit');
+    // The target was confirmed ready before the authority switch. Pause the
+    // previous family only after the authoritative change has committed.
+    // Do not silently report a complete cutover if Vercel rejects the pause.
+    const pauseFailures:string[]=[];
+    try{await pausePreviousSourceServices(actual);}catch(error){
+      pauseFailures.push(error instanceof Error?error.message:String(error));
+    }
+    if(pauseFailures.length){
+      return {...updated,sourceActivation:{
+        queued:[],failed:pauseFailures,
+        pulseRevision:Number(updated.pulse_revision)
+      }};
+    }
     // The old mode must not remain a second online Vercel family.
     // Record a partial cutover explicitly if Vercel refuses any pause operation.
     // Do not pause the previous License Manager before installed clients
