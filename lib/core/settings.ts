@@ -1,4 +1,4 @@
-import {resumeSourceServices,restoreResumedSourceServices,pausePreviousSourceServices} from './source-pause';
+import {resumeSourceServices,restoreResumedSourceServices} from './source-pause';
 import { db } from '../db';
 import {verifyVercelAccountProjects} from './source-vercel';
 import {syncSourceGitHubCredentials,syncLicenseManagerAccountConnections,inspectSourceDeployments} from './source-activation';
@@ -461,28 +461,15 @@ export async function setGithubProfile(
     );
     await client.query('commit');
     handoverCommitted=true;
-    // The target was confirmed ready before the authority switch. Pause the
-    // previous family only after the authoritative change has committed.
-    // Do not silently report a complete cutover if Vercel rejects the pause.
-    const pauseFailures:string[]=[];
-    try{await pausePreviousSourceServices(actual);}catch(error){
-      pauseFailures.push(error instanceof Error?error.message:String(error));
-    }
-    if(pauseFailures.length){
-      return {...updated,sourceActivation:{
-        queued:[],failed:pauseFailures,
-        pulseRevision:Number(updated.pulse_revision)
-      }};
-    }
-    // The old mode must not remain a second online Vercel family.
-    // Record a partial cutover explicitly if Vercel refuses any pause operation.
-    // Do not pause the previous License Manager before installed clients
-    // can read the switch pulse. Standby middleware blocks operations, while
-    // the old public entrypoints remain available for safe handover routing.
+    // Authority is selected, but installed customers may still be polling the
+    // previous API. A receipt cannot authenticate deployment routing, so do
+    // not terminate the previous family as part of this transaction.
+    // The owner must complete independent routing attestation before shutdown.
     return {...updated,sourceActivation:{
-      queued:[],failed:[],
+      queued:[],failed:[],pendingPreviousShutdown:true,
       pulseRevision:Number(updated.pulse_revision)
     }};
+
   }catch(error){
     await client.query('rollback').catch(()=>{});
     throw error;
