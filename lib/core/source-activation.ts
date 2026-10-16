@@ -154,38 +154,41 @@ async function applicationReady(service:Service):Promise<boolean>{
  }catch{return false;}
 }
 
-async function latestReadyDeployment(service:Service,token:string,teamId:string,githubToken:string){
- // A READY deployment can be months old. Never authorize cutover unless the
- // deployed GitHub identity and SHA match the destination's current main.
- const repoRef=await github('/repos/'+service.repo+'/git/ref/heads/main',githubToken) as
-  {object?:{sha?:string}};
- const expectedSha=String(repoRef.object?.sha||'').trim().toLowerCase();
- if(!/^[a-f0-9]{40}$/.test(expectedSha))
-  throw new Error('Cannot verify current main commit for '+service.repo);
+async function productionReadiness(service:Service,token:string,teamId:string,githubToken:string){
+ // A resumed, functioning deployment may be older than main. An outdated
+ // commit is not evidence that Vercel is paused or that a mode cannot switch.
+ const ref=await github('/repos/'+service.repo+'/git/ref/heads/main',githubToken) as {object?:{sha?:string}};
+ const head=String(ref.object?.sha||'').toLowerCase();
+ if(!/^[a-f0-9]{40}$/.test(head))throw new Error('Cannot verify current main commit for '+service.repo);
  let response:Response;
- try{response=await fetch('https://api.vercel.com/v6/deployments?projectId='+encodeURIComponent(service.projectId)+
-  '&teamId='+encodeURIComponent(teamId)+'&target=production&limit=1',{
-   cache:'no-store',headers:{authorization:'Bearer '+token,accept:'application/json'},
-   signal:AbortSignal.timeout(12000)
-  });}catch{throw new Error('Vercel project health check timed out for '+service.repo);}
- if(!response.ok)throw new Error('Vercel denied the Production health check for '+service.repo+' (HTTP '+response.status+').');
- const data=await response.json() as {deployments?:Array<{
-  readyState?:string;state?:string;
-  meta?:{githubCommitSha?:string;githubOrg?:string;githubRepo?:string}
- }>};
- const newest=data.deployments?.[0];
- if(!newest||!(newest.readyState==='READY'||newest.state==='READY'))return false;
- const deployedRepo=String(newest.meta?.githubOrg||'')+'/'+String(newest.meta?.githubRepo||'');
- const deployedSha=String(newest.meta?.githubCommitSha||'').toLowerCase();
- return deployedRepo===service.repo&&deployedSha===expectedSha;
+ try{
+  response=await fetch('https://api.vercel.com/v6/deployments?projectId='+encodeURIComponent(service.projectId)+
+   '&teamId='+encodeURIComponent(teamId)+'&target=production&limit=1',{
+    cache:'no-store',headers:{authorization:'Bearer '+token,accept:'application/json'},signal:AbortSignal.timeout(12000)});
+ }catch{throw new Error('Vercel project health check timed out for '+service.repo);}
+ if(!response.ok)throw new Error('Vercel denied Production readiness check for '+service.repo+' (HTTP '+response.status+').');
+ const body=await response.json() as {deployments?:Array<{readyState?:string;state?:string;meta?:{githubCommitSha?:string;githubOrg?:string;githubRepo?:string}}>} ;
+ const latest=body.deployments?.[0];
+ if(!latest||!(latest.readyState==='READY'||latest.state==='READY'))
+  return {ready:false,current:false,reason:'No READY production deployment'};
+ const deployedRepo=String(latest.meta?.githubOrg||'')+'/'+String(latest.meta?.githubRepo||'');
+ const deployedSha=String(latest.meta?.githubCommitSha||'').toLowerCase();
+ // Never activate a project whose deployed GitHub repository is unknown or
+ // belongs to another source family. An older SHA from the correct repository
+ // is acceptable for handover, but requires an explicit manual update later.
+ if(deployedRepo!==service.repo||!/^[a-f0-9]{40}$/.test(deployedSha))
+  return {ready:false,current:false,reason:'Production deployment source identity cannot be verified'};
+ const healthy=await applicationReady(service);
+ if(!healthy)return {ready:false,current:deployedSha===head,reason:'Production application health endpoint is unavailable'};
+ return {ready:true,current:deployedSha===head,reason:deployedSha===head?'ready and current':'ready; production commit is behind main'};
 }
 export async function inspectSourceDeployments(profile:SourceFamily){
  const {github:githubToken,vercel,teamId}=credentials(profile);
  const statuses=await Promise.all(WORKFLOWS[profile].map(async service=>({
   repo:service.repo,projectId:service.projectId,
-  ready:(await latestReadyDeployment(service,vercel,teamId,githubToken))&&(await applicationReady(service))
+  ...await productionReadiness(service,vercel,teamId,githubToken)
  })));
- return {profile,services:statuses,allReady:statuses.every(x=>x.ready)};
+ return {profile,services:statuses,allReady:statuses.every(x=>x.ready),allCurrent:statuses.every(x=>x.current)};
 }
 export async function dispatchSourceProductionDeployments(profile:SourceFamily,only?:string[]){
  const {github:token}=credentials(profile);
