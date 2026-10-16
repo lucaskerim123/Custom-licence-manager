@@ -1,4 +1,4 @@
-import {resumeSourceServices,pausePreviousSourceServices} from './source-pause';
+import {resumeSourceServices,restoreResumedSourceServices,pausePreviousSourceServices} from './source-pause';
 import { db } from '../db';
 import {verifyVercelAccountProjects} from './source-vercel';
 import {syncSourceGitHubCredentials,syncLicenseManagerAccountConnections,inspectSourceDeployments} from './source-activation';
@@ -396,7 +396,12 @@ export async function setGithubProfile(
   // Stage the destination while keeping the old family authoritative. A
   // deployment dispatch is not proof of readiness and must never flip mode.
   // A paused destination must be resumed before its fresh deployment can be checked.
-  await resumeSourceServices(next);
+  const resumed:string[]=[];
+  let handoverCommitted=false;
+  // An unsuccessful handover must not leave newly resumed standby services
+  // exposed. Track partial success even when Vercel rejects later projects.
+  try{
+    await resumeSourceServices(next,resumed);
   const destination=await inspectSourceDeployments(next);
   if(!destination.allReady){
     const absent=destination.services.filter(service=>!service.ready)
@@ -455,6 +460,7 @@ export async function setGithubProfile(
       })],
     );
     await client.query('commit');
+    handoverCommitted=true;
     // The target was confirmed ready before the authority switch. Pause the
     // previous family only after the authoritative change has committed.
     // Do not silently report a complete cutover if Vercel rejects the pause.
@@ -482,7 +488,15 @@ export async function setGithubProfile(
     throw error;
   }finally{
     client.release();
+  }  }catch(error){
+    if(handoverCommitted)throw error;
+    const restoreFailures=await restoreResumedSourceServices(next,resumed);
+    const reason=error instanceof Error?error.message:String(error);
+    throw new Error(reason+(restoreFailures.length
+      ? ' Standby restoration INCOMPLETE: '+restoreFailures.join('; ')
+      : ' Standby projects restored; previous source mode remains active.'));
   }
+
 }
 
 export async function getSourceHandoverStatus(){
